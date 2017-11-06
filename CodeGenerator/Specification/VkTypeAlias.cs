@@ -2,7 +2,7 @@
 {
     public class VkTypeAlias : VkType
     {
-        public readonly string ActualType;
+        public string ActualType;
         
         public VkTypeAlias(string typeName, string actualType, string comment) : base(typeName, comment)
         {

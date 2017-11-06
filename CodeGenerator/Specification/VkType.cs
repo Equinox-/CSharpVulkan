@@ -3,7 +3,7 @@
     public abstract class VkType
     {
         public readonly string TypeName;
-        public readonly string Comment;
+        public string Comment;
 
         public VkType(string typeName, string comment)
         {

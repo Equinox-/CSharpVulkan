@@ -1,0 +1,3 @@
+[submodule "CodeGenerator/documentation"]
+	path = CodeGenerator/documentation
+	url = https://github.com/KhronosGroup/Vulkan-Docs

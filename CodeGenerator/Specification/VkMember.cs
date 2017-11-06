@@ -8,17 +8,17 @@ namespace CodeGenerator.Specification
         // const TypeName[* by PointerLevels][FixedBufferSize] Name
         public readonly string Name;
 
-        public readonly string Comment;
+        public string Comment;
         public readonly string TypeName;
         public readonly int PointerLevels;
         public readonly IReadOnlyList<string> AnnotatedPointerLengths;
         public readonly IReadOnlyList<string> PossibleValueExpressions;
         public readonly string FixedBufferSize;
-        public readonly bool Constant;
+        public readonly bool Constant, Optional;
 
         public VkMember(string name, string comment, string typeName, int pointers, IReadOnlyCollection<string> valueExpressions, 
             IReadOnlyCollection<string> annotatedPointerLengths,
-            string fixedBufferSize, bool constant)
+            string fixedBufferSize, bool constant, bool optional)
         {
             PointerLevels = pointers;
             if (valueExpressions != null && valueExpressions.Count > 0)
@@ -34,6 +34,7 @@ namespace CodeGenerator.Specification
             TypeName = typeName;
             FixedBufferSize = fixedBufferSize;
             Constant = constant;
+            Optional = optional;
         }
 
         public override string ToString()
@@ -41,6 +42,8 @@ namespace CodeGenerator.Specification
             var sb = new StringBuilder();
             if (Constant)
                 sb.Append("const ");
+            if (Optional)
+                sb.Append("opt ");
             sb.Append(TypeName);
             sb.Append('*', PointerLevels);
             if (FixedBufferSize != null)

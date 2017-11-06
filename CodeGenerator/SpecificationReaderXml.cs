@@ -11,11 +11,11 @@ using CodeGenerator.Specification;
 
 namespace CodeGenerator
 {
-    public class SpecificationReader
+    public class SpecificationReaderXml
     {
         private readonly Specification.Specification _spec;
 
-        public SpecificationReader(Specification.Specification dest)
+        public SpecificationReaderXml(Specification.Specification dest)
         {
             _spec = dest;
         }
@@ -127,6 +127,7 @@ namespace CodeGenerator
                     var typeData = paramDesc.IndexOf(typeName, StringComparison.Ordinal);
                     Debug.Assert(typeData != -1);
                     var isConstant = paramDesc.LastIndexOf("const", typeData, StringComparison.OrdinalIgnoreCase) != -1;
+                    var isOptional = false;
                     var ptrInfo = PointerLevel(paramDesc, 0, typeData) +
                                   PointerLevel(paramDesc, typeData + typeName.Length);
                     var bufferSize = FixedBufferSize(paramDesc, typeData + typeName.Length);
@@ -149,7 +150,7 @@ namespace CodeGenerator
                     argumentsReversed.Add(new VkMember(paramDesc.Substring(nameBegin, nameEnd - nameBegin), null,
                         typeName,
                         ptrInfo, null, null,
-                        bufferSize, isConstant));
+                        bufferSize, isConstant, isOptional));
                 }
             }
 
@@ -176,7 +177,7 @@ namespace CodeGenerator
                     typeNoPtr = typeNoPtr.Substring(0, openBracket);
                 }
                 returnType = new VkMember("return", null, typeNoPtr.Trim(), ptrInfo, null, null, fixedBufferSize,
-                    false);
+                    false, false);
             }
 
             #endregion
@@ -287,6 +288,7 @@ namespace CodeGenerator
             var typeData = paramDesc.IndexOf(typeName.Value, StringComparison.Ordinal);
             Debug.Assert(typeData != -1);
             var isConstant = paramDesc.LastIndexOf("const", typeData, StringComparison.OrdinalIgnoreCase) != -1;
+            var isOptional = (m.Attribute("optional")?.Value?.IndexOf("true", StringComparison.OrdinalIgnoreCase) ?? -1) != -1;
             var ptrInfo = PointerLevel(paramDesc, 0, typeData) +
                           PointerLevel(paramDesc, typeData + typeName.Value.Length);
             var bufferSize = FixedBufferSize(paramDesc, typeData + typeName.Value.Length);
@@ -302,14 +304,12 @@ namespace CodeGenerator
                 comment.AppendLine(commentExtra);
             var optional = m.Attribute("optional")?.Value?.Equals("true", StringComparison.OrdinalIgnoreCase) ??
                            false;
-            if (optional)
-                comment.AppendLine("optional");
             var annotatedLengths = m.Attribute("len")?.Value?.Split(',');
             var valueExpressions = m.Attribute("values")?.Value?.Split(',');
             return new VkMember(memberName.Value, comment.Length > 0 ? comment.ToString().Trim() : null,
                 typeName.Value,
                 ptrInfo, valueExpressions, annotatedLengths,
-                bufferSize, isConstant);
+                bufferSize, isConstant, isOptional);
         }
 
         #endregion
