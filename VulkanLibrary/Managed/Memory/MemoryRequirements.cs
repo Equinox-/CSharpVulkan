@@ -23,10 +23,16 @@ namespace VulkanLibrary.Managed.Memory
     public struct MemoryRequirementFiltered<T>
     {
         /// <summary>
+        /// Collection of two requirement levels.
+        /// </summary>
+        public static readonly IReadOnlyList<MemoryRequirementLevel> PreferredThenRequired =
+            new List<MemoryRequirementLevel>() {MemoryRequirementLevel.Preferred, MemoryRequirementLevel.Required};
+
+        /// <summary>
         /// Actual value of this requirement.
         /// </summary>
         public T Value;
-        
+
         /// <summary>
         /// Enforcement level for this requirement
         /// </summary>
@@ -40,6 +46,7 @@ namespace VulkanLibrary.Managed.Memory
                     Value = default(T);
             }
         }
+
         private MemoryRequirementLevel _level;
     }
 
@@ -52,12 +59,12 @@ namespace VulkanLibrary.Managed.Memory
         /// Raw requirements for allocation
         /// </summary>
         public VkMemoryRequirements TypeRequirements;
-        
+
         ///<summary>
         /// A set of flags the allocation is prefers to have.
         /// </summary>
         public VkMemoryPropertyFlag PreferredFlags;
-        
+
         ///<summary>
         /// A set of flags the allocation must have.
         /// </summary>
@@ -85,27 +92,36 @@ namespace VulkanLibrary.Managed.Memory
             else
                 PreferredFlags |= flag;
         }
-        
+
+        /// <see cref="VkMemoryPropertyFlag.DeviceLocal"/>
         public MemoryRequirementLevel DeviceLocal
         {
             get => GetFlag(VkMemoryPropertyFlag.DeviceLocal);
             set => SetFlag(VkMemoryPropertyFlag.DeviceLocal, value);
         }
+
+        /// <see cref="VkMemoryPropertyFlag.HostVisible"/>
         public MemoryRequirementLevel HostVisible
         {
             get => GetFlag(VkMemoryPropertyFlag.HostVisible);
             set => SetFlag(VkMemoryPropertyFlag.HostVisible, value);
         }
+
+        /// <see cref="VkMemoryPropertyFlag.HostCoherent"/>
         public MemoryRequirementLevel HostCoherent
         {
             get => GetFlag(VkMemoryPropertyFlag.HostCoherent);
             set => SetFlag(VkMemoryPropertyFlag.HostCoherent, value);
         }
+
+        /// <see cref="VkMemoryPropertyFlag.HostCached"/>
         public MemoryRequirementLevel HostCached
         {
             get => GetFlag(VkMemoryPropertyFlag.HostCached);
             set => SetFlag(VkMemoryPropertyFlag.HostCached, value);
         }
+
+        /// <see cref="VkMemoryPropertyFlag.LazilyAllocated"/>
         public MemoryRequirementLevel LazilyAllocated
         {
             get => GetFlag(VkMemoryPropertyFlag.LazilyAllocated);
@@ -116,13 +132,16 @@ namespace VulkanLibrary.Managed.Memory
         /// Constraint on if this memory should be dedicated.
         /// </summary>
         public MemoryRequirementFiltered<IDedicatedMemoryOwner> DedicatedMemory;
-        
+
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static MemoryType FindMemoryTypeWithFlags(MemoryRequirements req, VkMemoryPropertyFlag desiredFlags, IReadOnlyList<MemoryType> memoryTypes)
+        private static MemoryType FindMemoryTypeWithFlags(MemoryRequirements req, VkMemoryPropertyFlag desiredFlags,
+            IReadOnlyList<MemoryType> memoryTypes)
         {
-            foreach (var type in memoryTypes){
-                if (req.TypeRequirements.MemoryTypeBits != 0 && (req.TypeRequirements.MemoryTypeBits & (1 << (int) type.TypeIndex)) == 0)
+            foreach (var type in memoryTypes)
+            {
+                if (req.TypeRequirements.MemoryTypeBits != 0 &&
+                    (req.TypeRequirements.MemoryTypeBits & (1 << (int) type.TypeIndex)) == 0)
                     continue;
                 if ((type.Flags & desiredFlags) != desiredFlags)
                     continue;
@@ -130,11 +149,12 @@ namespace VulkanLibrary.Managed.Memory
             }
             return null;
         }
-        
+
         [Pure]
         public MemoryType FindMemoryType(PhysicalDevice physicalDevice)
         {
-            return FindMemoryTypeWithFlags(this, this.PreferredFlags | this.RequiredFlags, physicalDevice.MemoryTypes) ??
+            return FindMemoryTypeWithFlags(this, this.PreferredFlags | this.RequiredFlags,
+                       physicalDevice.MemoryTypes) ??
                    FindMemoryTypeWithFlags(this, this.RequiredFlags, physicalDevice.MemoryTypes);
         }
     }

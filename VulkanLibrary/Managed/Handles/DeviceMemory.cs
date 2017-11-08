@@ -50,10 +50,30 @@ namespace VulkanLibrary.Managed.Handles
 
         private bool TryAllocateDedicated(MemoryRequirements req, MemoryType memoryType)
         {
-            // TODO
-            return false;
-            // if (!req.DedicatedMemory.Value.SetOwnerOn(ref dedicatedInfo))
-            //     return false;
+            unsafe
+            {
+                if (!Device.ExtensionEnabled(VkExtension.KhrDedicatedAllocation))
+                    return false;
+                    var dedInfo = new VkMemoryDedicatedAllocateInfoKHR()
+                    {
+                        SType = VkStructureType.MemoryDedicatedAllocateInfoKhr,
+                        PNext = (void*) 0
+                    };
+                    if (!req.DedicatedMemory.Value.SetOwnerOn(ref dedInfo))
+                        return false;
+                var info = new VkMemoryAllocateInfo()
+                {
+                    SType = VkStructureType.MemoryAllocateInfo,
+                    AllocationSize = req.TypeRequirements.Size,
+                    MemoryTypeIndex = memoryType.TypeIndex,
+                    PNext = &dedInfo
+                };
+                Handle = Device.Handle.AllocateMemory(&info, Instance.AllocationCallbacks);
+                if (Handle == VkDeviceMemory.Null) return false;
+                DedicatedMemoryOwner = req.DedicatedMemory.Value;
+                Capacity = req.TypeRequirements.Size;
+                return true;
+            }
         }
 
         private bool TryAllocateNormal(ulong capacity, MemoryType memoryType)
@@ -65,9 +85,9 @@ namespace VulkanLibrary.Managed.Handles
                     SType = VkStructureType.MemoryAllocateInfo,
                     AllocationSize = capacity,
                     MemoryTypeIndex = memoryType.TypeIndex,
-                    PNext = (void*)0
+                    PNext = (void*) 0
                 };
-                Handle = Device.Handle.AllocateMemory(&info, (VkAllocationCallbacks*) 0);
+                Handle = Device.Handle.AllocateMemory(&info, Instance.AllocationCallbacks);
             }
             if (Handle == VkDeviceMemory.Null) return false;
             DedicatedMemoryOwner = null;

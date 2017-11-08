@@ -31,6 +31,9 @@ namespace CodeGenerator
                     ReadCommands(k);
                 else if (k.Name.LocalName.Equals("enums"))
                     ReadEnum(k);
+                else if (k.Name.LocalName.Equals("extensions"))
+                    foreach (var ext in k.Elements("extension"))
+                        ReadExtension(ext);
             }
         }
 
@@ -288,7 +291,8 @@ namespace CodeGenerator
             var typeData = paramDesc.IndexOf(typeName.Value, StringComparison.Ordinal);
             Debug.Assert(typeData != -1);
             var isConstant = paramDesc.LastIndexOf("const", typeData, StringComparison.OrdinalIgnoreCase) != -1;
-            var isOptional = (m.Attribute("optional")?.Value?.IndexOf("true", StringComparison.OrdinalIgnoreCase) ?? -1) != -1;
+            var isOptional =
+                (m.Attribute("optional")?.Value?.IndexOf("true", StringComparison.OrdinalIgnoreCase) ?? -1) != -1;
             var ptrInfo = PointerLevel(paramDesc, 0, typeData) +
                           PointerLevel(paramDesc, typeData + typeName.Value.Length);
             var bufferSize = FixedBufferSize(paramDesc, typeData + typeName.Value.Length);
@@ -345,5 +349,96 @@ namespace CodeGenerator
         }
 
         #endregion
+
+        private const int ExtBase = 1000000000;
+        private const int ExtBlockSize = 1000;
+
+        private void ReadExtension(XElement e)
+        {
+            string name = e.Attribute("name")?.Value;
+            Debug.Assert(name != null);
+            string numberStr = e.Attribute("number")?.Value;
+            Debug.Assert(int.TryParse(numberStr, out int number));
+            var requiresExtensions = e.Attribute("requires")?.Value?.Split(',');
+
+            var extension = new VkExtension(name, e.Attribute("type")?.Value, e.Attribute("comment")?.Value, number,
+                requiresExtensions ?? new string[0]);
+
+            foreach (var req in e.Elements("require"))
+            {
+                foreach (var en in req.Elements("enum"))
+                {
+                    var cname = en.Attribute("name")?.Value;
+                    Debug.Assert(cname != null);
+                    var extends = en.Attribute("extends")?.Value;
+                    var offset = en.Attribute("offset")?.Value;
+                    var dir = en.Attribute("dir")?.Value ?? "+";
+                    var value = en.Attribute("value")?.Value;
+                    var bitpos = en.Attribute("bitpos")?.Value;
+                    var comment = en.Attribute("comment")?.Value;
+                    var valueWasString = false;
+                    VkConstant cstType;
+                    if (bitpos == null && value == null)
+                    {
+                        if (offset != null)
+                        {
+                            Debug.Assert(dir == "+" || dir == "-");
+                            value = (ExtBase + (ExtBlockSize * (number - 1)) + int.Parse(offset)).ToString();
+                            if (dir == "-")
+                                value = "-(" + value + ")";
+                        }
+                        else
+                        {
+                            cstType = _spec.Constants[cname];
+                            extension.ProvidedConstants.Add(cstType);
+                            continue;
+                        }
+                    }
+                    if (value != null && value.StartsWith("\"") && value.EndsWith("\""))
+                    {
+                        value = value.Substring(1, value.Length - 2);
+                        valueWasString = true;
+                    }
+                    if (bitpos != null)
+                    {
+                        cstType = VkConstant.AsBitPosition(cname, comment, bitpos);
+                    }
+                    else
+                    {
+                        Debug.Assert(value != null);
+                        cstType = VkConstant.AsValue(cname, comment, value);
+                    }
+                    if (extends != null)
+                    {
+                        var enumType = (VkEnum) _spec.TypeDefs[extends];
+                        ((IList<VkConstant>) enumType.Values).Add(cstType);
+                    }
+                    else if (cstType.Name.EndsWith("_EXTENSION_NAME", StringComparison.OrdinalIgnoreCase))
+                    {
+                        extension.Name = value;
+                        continue;
+                    }
+                    else if (cstType.Name.EndsWith("_SPEC_VERSION", StringComparison.OrdinalIgnoreCase))
+                    {
+                        extension.Version = long.Parse(value);
+                        continue;
+                    }
+                    if (!valueWasString)
+                    {
+                        _spec.Add(cstType);
+                        extension.ProvidedConstants.Add(cstType);
+                    }
+                }
+                foreach (var en in req.Elements("type"))
+                {
+                    extension.ProvidedTypes.Add(_spec.TypeDefs[en.Attribute("name")?.Value]);
+                }
+                foreach (var en in req.Elements("command"))
+                {
+                    extension.ProvidedTypes.Add((VkCommand) _spec.TypeDefs[en.Attribute("name")?.Value]);
+                }
+            }
+            _spec.Add(extension);
+        }
     }
 }

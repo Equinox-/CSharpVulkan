@@ -5,6 +5,14 @@ namespace VulkanLibrary.Unmanaged
 {
     public partial class Vulkan
     {
+        /// <summary>
+        /// To query the available instance extensions, call:
+        /// </summary>
+        /// <param name="layerName">is either `NULL` or a pointer to a null-terminated UTF-8 string naming the layer to retrieve extensions from.</param>
+        /// <returns>array of <see cref="VkExtensionProperties"/> structures</returns>
+        /// <exception cref="VulkanLibrary.Unmanaged.VkErrorOutOfHostMemory"></exception>
+        /// <exception cref="VulkanLibrary.Unmanaged.VkErrorOutOfDeviceMemory"></exception>
+        /// <exception cref="VulkanLibrary.Unmanaged.VkErrorLayerNotPresent"></exception>
         public static VkExtensionProperties[] EnumerateExtensionProperties(string layerName)
         {
             unsafe
@@ -14,16 +22,22 @@ namespace VulkanLibrary.Unmanaged
                 {
                     if (layerName != null)
                         layerNamePtr = (byte*) Marshal.StringToHGlobalAnsi(layerName).ToPointer();
-                    VkExtensionProperties[] props = null;
-                    uint extensionCount = 0;
+                    VkExtensionProperties[] props;
+                    uint count = 0;
                     do
                     {
-                        props = new VkExtensionProperties[extensionCount];
-                        fixed (VkExtensionProperties* propPtr = &props[0])
+                        props = new VkExtensionProperties[count];
+                        var pin = GCHandle.Alloc(props, GCHandleType.Pinned);
+                        try
                         {
-                            vkEnumerateInstanceExtensionProperties(layerNamePtr, &extensionCount, propPtr);
+                            var arrayPtr = count > 0 ? Marshal.UnsafeAddrOfPinnedArrayElement(props, 0).ToPointer() : (void*) 0;
+                            VkException.Check(vkEnumerateInstanceExtensionProperties(layerNamePtr, &count, (VkExtensionProperties*) arrayPtr));
                         }
-                    } while (props.Length != extensionCount);
+                        finally
+                        {
+                            pin.Free();
+                        }
+                    } while (props.Length != count);
                     return props;
                 }
                 finally
@@ -34,20 +48,32 @@ namespace VulkanLibrary.Unmanaged
             }
         }
 
+        /// <summary>
+        /// To query the available layers, call:
+        /// </summary>
+        /// <returns>array of <see cref="VkLayerProperties"/> structures</returns>
+        /// <exception cref="VulkanLibrary.Unmanaged.VkErrorOutOfHostMemory"></exception>
+        /// <exception cref="VulkanLibrary.Unmanaged.VkErrorOutOfDeviceMemory"></exception>
         public static VkLayerProperties[] EnumerateLayerProperties()
         {
             unsafe
             {
-                VkLayerProperties[] props = null;
-                uint extensionCount = 0;
+                VkLayerProperties[] props;
+                uint count = 0;
                 do
                 {
-                    props = new VkLayerProperties[extensionCount];
-                    fixed (VkLayerProperties* propPtr = &props[0])
+                    props = new VkLayerProperties[count];
+                    var pin = GCHandle.Alloc(props, GCHandleType.Pinned);
+                    try
                     {
-                        vkEnumerateInstanceLayerProperties(&extensionCount, propPtr);
+                        var arrayPtr = count > 0 ? Marshal.UnsafeAddrOfPinnedArrayElement(props, 0).ToPointer() : (void*) 0;
+                        VkException.Check(vkEnumerateInstanceLayerProperties(&count, (VkLayerProperties*) arrayPtr));
                     }
-                } while (props.Length != extensionCount);
+                    finally
+                    {
+                        pin.Free();
+                    }
+                } while (props.Length != count);
                 return props;
             }
         }

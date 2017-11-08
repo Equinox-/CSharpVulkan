@@ -77,32 +77,30 @@ namespace VulkanLibrary.Managed.Memory.Pool
         /// <summary>
         /// Represents a handle to pooled memory.
         /// </summary>
-        public struct MemoryHandle : IMappedPooledMemory
+        public struct MemoryHandle : IPooledMappedMemory
         {
             private readonly MemoryPool.Memory _handle;
             
-            /// <summary>
-            /// Mapped memory handle, or null if this handle isn't mapped.
-            /// </summary>
+            /// <inheritdoc cref="IPooledDeviceMemory.BackingMemory"/>
+            public DeviceMemory BackingMemory { get; }
+            
+            /// <inheritdoc cref="IPooledMappedMemory.MappedMemory"/>
             public IMappedMemory MappedMemory { get; }
 
             internal MemoryHandle(VulkanMemoryPool pool, MemoryPool.Memory handle)
             {
                 _handle = handle;
+                BackingMemory = pool._memory;
                 MappedMemory = pool._mapped != null ? new ProxyMemory(pool._mapped, handle.Offset, handle.Size) : null;
             }
             
-            /// <summary>
-            /// Size of this handle.
-            /// </summary>
+            /// <inheritdoc />
             public ulong Size
             {
                 [MethodImpl(MethodImplOptions.AggressiveInlining)] get { return _handle.Size; }
             }
             
-            /// <summary>
-            /// Offset in memory for this handle.
-            /// </summary>
+            /// <inheritdoc />
             public ulong Offset
             {
                 [MethodImpl(MethodImplOptions.AggressiveInlining)] get { return _handle.Offset; }

@@ -8,6 +8,7 @@ namespace CodeGenerator.Specification
         public readonly string Comment;
         public readonly string BitPositionExpression;
         public readonly string Expression;
+        public VkExtension Extension = null;
 
         private VkConstant(string name, string comment, string expression, string bitPositionExpression)
         {

@@ -7,7 +7,7 @@ namespace CodeGenerator.Specification
     {
         public readonly bool IsBitmask;
         public readonly IReadOnlyList<VkConstant> Values;
-        public string BackingType = "int";
+        public string BackingType = "int32_t";
         
         public VkEnum(string typeName, bool bitmask, string comment, params VkConstant[] values) : base(typeName, comment)
         {

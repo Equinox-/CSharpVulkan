@@ -234,7 +234,8 @@ namespace CodeGenerator
                 else if (type is VkHandle handle)
                 {
                     EmitComment(writer, type.Comment, null, null);
-                    writer.WriteLineIndent($"public partial struct {handle.TypeName} : IEquatable<{handle.TypeName}> {{");
+                    writer.WriteLineIndent(
+                        $"public partial struct {handle.TypeName} : IEquatable<{handle.TypeName}> {{");
                     writer.IncreaseIndent();
                     writer.WriteLineIndent($"// Parents are {string.Join(", ", handle.ParentHandles)}");
                     writer.WriteLine("#pragma warning disable 649");
@@ -256,10 +257,15 @@ namespace CodeGenerator
                     writer.WriteLine();
                     writer.WriteLineIndent("/// <inheritdoc/>");
                     writer.WriteLineIndent($"public bool Equals({handle.TypeName} other) => other._handle == _handle;");
-                    writer.WriteLineIndent($"public override bool Equals(object obj) => obj is {handle.TypeName} other && other._handle == _handle;");
-                    
-                    writer.WriteLineIndent($"public static bool operator== ({handle.TypeName} a, {handle.TypeName} b) => a._handle == b._handle;");
-                    writer.WriteLineIndent($"public static bool operator!= ({handle.TypeName} a, {handle.TypeName} b) => a._handle != b._handle;");
+                    writer.WriteLineIndent(
+                        $"public override bool Equals(object obj) => obj is {handle.TypeName} other && other._handle == _handle;");
+
+                    writer.WriteLineIndent(
+                        $"public static bool operator== ({handle.TypeName} a, {handle.TypeName} b) => a._handle == b._handle;");
+                    writer.WriteLineIndent(
+                        $"public static bool operator!= ({handle.TypeName} a, {handle.TypeName} b) => a._handle != b._handle;");
+                    writer.WriteLineIndent("/// <inheritdoc/>");
+                    writer.WriteLineIndent($"public override int GetHashCode() => _handle.GetHashCode();");
                 }
             });
         }
@@ -396,7 +402,7 @@ namespace CodeGenerator
                     writer.WriteLineIndent("/// </summary>");
                     writer.WriteIndent();
                     writer.Write(
-                        $"public sealed partial class {managedType} : Utilities.VulkanHandle<{unmanagedType}>");
+                        $"public partial class {managedType} : Utilities.VulkanHandle<{unmanagedType}>");
                     foreach (var parentType in parents)
                         writer.Write($", Utilities.I{ResolveManagedTypeName(parentType)}Owned");
                     writer.WriteLine();
@@ -510,6 +516,16 @@ namespace CodeGenerator
                                 {
                                     writer.Write($"&arg{i}");
                                 }
+                                else if (parentTypes.Any(x => x.TypeName.Equals("VkInstance")) &&
+                                         arg.TypeName.Equals("VkAllocationCallbacks"))
+                                {
+                                    writer.Write($"Instance.AllocationCallbacks");
+                                }
+                                else if (handle.TypeName.Equals("VkInstance") &&
+                                         arg.TypeName.Equals("VkAllocationCallbacks"))
+                                {
+                                    writer.Write($"AllocationCallbacks");
+                                }
                                 else
                                 {
                                     writer.Write($"({MemberTypeWithPtr(arg)}) 0");
@@ -543,22 +559,74 @@ namespace CodeGenerator
             }
         }
 
+        private readonly Dictionary<VkExtension, string> _extensionLookupTable = new Dictionary<VkExtension, string>();
+
+        private static string CleanExtensionName(string name)
+        {
+            var cleanName = UnderscoresToCamelCase(name);
+            if (cleanName.StartsWith("Vk"))
+                cleanName = cleanName.Substring(2);
+            return cleanName;
+        }
+
+        private void RequiresExtension(TextWriter writer, VkExtension ext)
+        {
+            if (ext == null)
+                return;
+            writer.WriteLineIndent($"[ExtensionRequired(VkExtension.{_extensionLookupTable[ext]})]");
+        }
+
         private void WriteUnmanagedTypes()
         {
             _constantLookupTable.Clear();
-            foreach (var entry in _spec.TypeDefs.Values.OfType<VkEnum>())
+            _extensionLookupTable.Clear();
             {
-                var writer = WriterFor(entry);
-                WriteEnum(writer, entry);
-                writer.WriteLine();
-            }
-            {
-                var constants = WriterFor(null);
-                foreach (var entry in _spec.Constants.Values.Except(_constantLookupTable.Keys))
+                var writer = GetTextWriter("Unmanaged/VkExtension.cs", (x) =>
                 {
-                    WriteConstant(constants, entry);
+                    x.WriteLineIndent("/// <summary>");
+                    x.WriteLineIndent("/// Describes the extensions supported by this library");
+                    x.WriteLineIndent("/// </summary>");
+                    x.WriteLineIndent("public enum VkExtension {");
+                    x.IncreaseIndent();
+                });
+                foreach (var extension in _spec.Extensions.Values)
+                {
+                    var cleanName = CleanExtensionName(extension.Name);
+                    _extensionLookupTable[extension] = cleanName;
+                    var required = string.Join("", extension.Required.Select(CleanExtensionName).Select(x => ", " + x));
+                    var extType = extension.Type;
+                    if (extType == null)
+                        extType = "Unknown";
+                    else
+                        extType = char.ToUpper(extType[0]) + extType.Substring(1);
+                    writer.WriteLineIndent(
+                        $"[ExtensionDescriptionAttribute(\"{extension.Name}\", {extension.Number}, ExtensionType.{extType}, {extension.Version}{required})]");
+                    writer.WriteLineIndent($"{cleanName} = {extension.Number},");
                 }
-                constants.WriteLine();
+            }
+
+            var nonEnumConstants =
+                _spec.Constants.Values.Except(_spec.TypeDefs.Values.OfType<VkEnum>().SelectMany(x => x.Values))
+                    .ToList();
+            for (var stage = 0; stage <= 1; stage++)
+            {
+                var write = stage != 0;
+                foreach (var entry in _spec.TypeDefs.Values.OfType<VkEnum>())
+                {
+                    var writer = WriterFor(entry);
+                    WriteEnum(writer, entry, write);
+                    if (write)
+                        writer.WriteLine();
+                }
+                {
+                    var constants = WriterFor(null);
+                    foreach (var entry in nonEnumConstants)
+                    {
+                        WriteConstant(constants, entry, write);
+                    }
+                    if (write)
+                        constants.WriteLine();
+                }
             }
 
             foreach (var entry in _spec.TypeDefs.Values.Where(x => !(x is VkEnum)))
@@ -636,6 +704,8 @@ namespace CodeGenerator
                 EmitComment(writer, cmd.Comment, cmd.Arguments, cmd.ReturnType, cmd.ErrorCodes);
                 writer.WriteLineIndent(
                     $"[DllImport(\"{VulkanLibraryName}\", CallingConvention = CallingConvention.StdCall)]");
+                if (cmd.Extension != null)
+                    RequiresExtension(writer, cmd.Extension);
                 writer.WriteIndent();
                 writer.Write("internal static extern unsafe ");
                 // ReSharper disable once ConvertIfStatementToConditionalTernaryExpression
@@ -675,6 +745,7 @@ namespace CodeGenerator
             var proxyName = cmd.TypeName.Substring(cmd.TypeName.StartsWith("vkCmd") ? 5 : 2);
 
             #region Proxy 1, Assured
+
             {
                 writer.WriteLine();
                 var aliasReturn = cmd.Arguments[cmd.Arguments.Count - 1].PointerLevels == 1
@@ -719,6 +790,8 @@ namespace CodeGenerator
 
                 EmitComment(writer, cmd.Comment, argList.Where(x => !lengthArgSupplier.ContainsKey(x)).ToList(), null,
                     cmd.ErrorCodes);
+                if (cmd.Extension != null)
+                    RequiresExtension(writer, cmd.Extension);
                 writer.WriteIndent();
                 if (target != null)
                     writer.Write("public ");
@@ -861,7 +934,7 @@ namespace CodeGenerator
                         // Emit call
                         writer.WriteIndent();
                         if (cmd.ReturnType.TypeName.Equals(VkResultType))
-                            writer.Write($"VkException result = VkException.Create(");
+                            writer.Write($"VkException.Check(");
                         else if (!cmd.ReturnType.TypeName.Equals("void"))
                             writer.Write("return ");
                         writer.Write(cmd.TypeName);
@@ -891,7 +964,6 @@ namespace CodeGenerator
                         if (cmd.ReturnType.TypeName.Equals(VkResultType))
                         {
                             writer.WriteLine("));");
-                            writer.WriteLineIndent("if (result != null) throw result;");
                         }
                         else
                             writer.WriteLine(");");
@@ -956,6 +1028,8 @@ namespace CodeGenerator
                         argList = enumerable.ToList();
                     }
                     EmitComment(writer, cmd.Comment, argList, null, cmd.ErrorCodes);
+                    if (cmd.Extension != null)
+                        RequiresExtension(writer, cmd.Extension);
                     writer.WriteIndent();
                     if (target != null)
                         writer.Write("public ");
@@ -1062,7 +1136,20 @@ namespace CodeGenerator
                                 writer.WriteLineIndent("//" + declaration + ";");
                             }
                         }
-                        writer.WriteLineIndent($"{returnTypeName} retval = default({returnTypeName});");
+                        writer.WriteIndent();
+                        writer.Write($"{returnTypeName} retval = ");
+                        if (lastArg.PointerLevels > 1)
+                        {
+                            writer.WriteLine($"({MemberTypeWithPtr(lastArg, 1)}) IntPtr.Zero;");
+                        }
+                        else if (ResolveType(lastArg.TypeName) is VkStructOrUnion sl && IsConstrainedDefault(sl))
+                        {
+                            writer.WriteLine($"{sl.TypeName}.Default;");
+                        }
+                        else
+                        {
+                            writer.WriteLine($"default({returnTypeName});");
+                        }
                         {
                             if (ansiStrings.Count > 0)
                             {
@@ -1130,12 +1217,15 @@ namespace CodeGenerator
             #endregion
         }
 
+        private static readonly Regex DoubleLongExpressionRegex = new Regex(@"([0-9Uu][lL])[lL](\b)");
         private static readonly Regex ConstantExpressionRegex = new Regex(@"\(constant::(.*?)\)");
 
-        private string SubstituteConstantExpression(string expr)
+        private string SubstituteConstantExpression(string expr, bool all)
         {
+            expr = DoubleLongExpressionRegex.Replace(expr, (a) => a.Groups[1].Value + a.Groups[2].Value);
             var result = new StringBuilder(expr.Length);
             var match = ConstantExpressionRegex.Match(expr);
+
             var lastIndex = 0;
             while (match.Success)
             {
@@ -1145,14 +1235,20 @@ namespace CodeGenerator
                 lastIndex = match.Index + match.Length;
                 match = match.NextMatch();
             }
+
             result.Append(expr, lastIndex, expr.Length - lastIndex);
+            if (!all)
+                return result.ToString();
+            foreach (var kv in _constantLookupTable)
+                result = result.Replace(kv.Key.Name, kv.Value);
             return result.ToString();
         }
 
-        private int EvaluateConstantExpr(string expr)
+        private long EvaluateConstantExpr(string expr)
         {
             var result = new StringBuilder(expr.Length);
             var match = ConstantExpressionRegex.Match(expr);
+
             var lastIndex = 0;
             while (match.Success)
             {
@@ -1162,10 +1258,15 @@ namespace CodeGenerator
                 lastIndex = match.Index + match.Length;
                 match = match.NextMatch();
             }
+
             result.Append(expr, lastIndex, expr.Length - lastIndex);
+
             var res = result.ToString();
-            if (!int.TryParse(res, out int count))
-                count = (int) new DataTable().Compute(res, "");
+            if (!long.TryParse(res, out long count))
+            {
+                // avoid boxing issues
+                count = long.Parse(new DataTable().Compute(res, "").ToString());
+            }
             return count;
         }
 
@@ -1180,6 +1281,7 @@ namespace CodeGenerator
             return DocumentationLinkPattern.Replace(DocumentationPattern.Replace(comment, (match) =>
             {
                 var doctype = match.Groups[1].Value;
+
                 var docval = match.Groups[2].Value;
                 switch (doctype)
                 {
@@ -1218,10 +1320,12 @@ namespace CodeGenerator
                     case "code":
                         return $"<c>{docval}</c>";
                 }
+
                 return "";
             }), (match) =>
             {
                 var id = match.Groups[1].Value;
+
                 var name = match.Groups[2].Value;
                 return $"<a href='https://www.khronos.org/registry/vulkan/specs/1.0/html/vkspec.html#{id}'>{name}</a>";
             });
@@ -1230,8 +1334,9 @@ namespace CodeGenerator
         private string EmitDummyStruct(VkMember cst)
         {
             var count = EvaluateConstantExpr(cst.FixedBufferSize);
+
             var childType = MemberTypeWithPtr(cst);
-            return EmitDummyStruct(count, childType);
+            return EmitDummyStruct(checked((int) count), childType);
         }
 
         private string EmitDummyStruct(int count, string type)
@@ -1244,11 +1349,12 @@ namespace CodeGenerator
             if (!_emittedDummies.Add(dummyType))
                 return dummyType;
             writer.WriteLineIndent($"internal struct {dummyType} : IFixedArray<{type}> {{");
-
             writer.IncreaseIndent();
             {
                 writer.WriteLine("#pragma warning disable 169");
-                for (var i = 0; i < count; i++)
+                for (var i = 0;
+                    i < count;
+                    i++)
                     writer.WriteLineIndent($"private {type} _value{i};");
                 writer.WriteLine("#pragma warning restore 169");
                 writer.WriteLine();
@@ -1296,11 +1402,9 @@ namespace CodeGenerator
                 }
                 writer.DecreaseIndent();
                 writer.WriteLineIndent("}");
-
                 writer.WriteLine();
                 writer.WriteLineIndent("/// <inheritdoc />");
                 writer.WriteLineIndent($"public IEnumerator<{type}> GetEnumerator() => new Enumerator(this);");
-
                 writer.WriteLineIndent("/// <inheritdoc />");
                 writer.WriteLineIndent(
                     $"System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => new Enumerator(this);");
@@ -1344,6 +1448,32 @@ namespace CodeGenerator
             });
         }
 
+        private bool IsConstrainedDefault(VkStructOrUnion @struct)
+        {
+            foreach (var entry in @struct.Members)
+            {
+                var type = ResolveType(entry.TypeName);
+                if (entry.PointerLevels != 0 && entry.Optional)
+                    continue;
+                if (entry.PossibleValueExpressions != null && entry.PossibleValueExpressions.Count > 0)
+                {
+                    var expr = SubstituteConstantExpression(entry.PossibleValueExpressions[0], true);
+                    try
+                    {
+                        if (EvaluateConstantExpr(expr) != 0)
+                            return true;
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+                }
+                if (type is VkStructOrUnion child && IsConstrainedDefault(child))
+                    return true;
+            }
+            return false;
+        }
+
         private void WriteStructOrUnion(TextWriter writer, VkStructOrUnion @struct)
         {
             EmitComment(writer, @struct.Comment, null, null);
@@ -1351,10 +1481,15 @@ namespace CodeGenerator
             var unsafeAttr = isUnsafe ? "unsafe " : "";
             if (@struct is VkUnion)
                 writer.WriteLineIndent("[StructLayout(LayoutKind.Explicit)]");
+            if (@struct.Extension != null)
+                RequiresExtension(writer, @struct.Extension);
             writer.WriteLineIndent($"public {unsafeAttr}struct {@struct.TypeName} {{");
             writer.IncreaseIndent();
             if (IsNullableStruct(@struct))
             {
+                writer.WriteLineIndent("/// <summary>");
+                writer.WriteLineIndent("/// Null value for this structure");
+                writer.WriteLineIndent("/// </summary>");
                 writer.WriteLineIndent($"public static readonly {@struct.TypeName} Null = new {@struct.TypeName}() {{");
                 writer.IncreaseIndent();
                 foreach (var member in @struct.Members)
@@ -1383,19 +1518,95 @@ namespace CodeGenerator
                 writer.DecreaseIndent();
                 writer.WriteLineIndent("};");
             }
+            if (IsConstrainedDefault(@struct))
+            {
+                writer.WriteLineIndent("/// <summary>");
+                writer.WriteLineIndent("/// Default value for this structure");
+                writer.WriteLineIndent("/// </summary>");
+                writer.WriteLineIndent(
+                    $"public static readonly {@struct.TypeName} Default = new {@struct.TypeName}() {{");
+                writer.IncreaseIndent();
+                foreach (var member in @struct.Members)
+                {
+                    if (member.PointerLevels > 0)
+                        writer.WriteLineIndent(
+                            $"{SanitizeStructMemberName(member.Name)} = ({MemberTypeWithPtr(member)}) IntPtr.Zero,");
+                    else
+                    {
+                        var type = ResolveType(member.TypeName);
+                        switch (type)
+                        {
+                            case VkTypeFunctionPointer _:
+                                writer.WriteLineIndent(
+                                    $"{SanitizeStructMemberName(member.Name)} = IntPtr.Zero,");
+                                break;
+                            case VkStructOrUnion s:
+                                if (IsConstrainedDefault(s))
+                                    writer.WriteLineIndent(
+                                        $"{SanitizeStructMemberName(member.Name)} = {type.TypeName}.Default,");
+                                break;
+                            default:
+                                if (member.PossibleValueExpressions != null &&
+                                    member.PossibleValueExpressions.Count > 0)
+                                {
+                                    var expr = SubstituteConstantExpression(member.PossibleValueExpressions[0], true);
+                                    writer.WriteLineIndent($"{SanitizeStructMemberName(member.Name)} = {expr},");
+                                }
+                                break;
+                        }
+                    }
+                }
+                writer.DecreaseIndent();
+                writer.WriteLineIndent("};");
+            }
             foreach (var cst in @struct.Members)
             {
                 EmitComment(writer, cst.Comment, null, null);
                 var name = SanitizeStructMemberName(cst.Name);
                 if (@struct is VkUnion)
                     writer.WriteLineIndent("[FieldOffset(0)]");
-                // ReSharper disable once ConvertIfStatementToConditionalTernaryExpression
+// ReSharper disable once ConvertIfStatementToConditionalTernaryExpression
                 if (!string.IsNullOrWhiteSpace(cst.FixedBufferSize))
                 {
                     var type = ResolveType(cst.TypeName);
                     if (cst.PointerLevels == 0 && FixedTypes.Contains(GetTypeName(type)))
+                    {
+                        var fixedBufferSize = SubstituteConstantExpression(cst.FixedBufferSize, true);
                         writer.WriteLineIndent(
-                            $"public fixed {MemberTypeWithPtr(cst)} {name}[{SubstituteConstantExpression(cst.FixedBufferSize)}];");
+                            $"public fixed {MemberTypeWithPtr(cst)} {name}[{fixedBufferSize}];");
+                        if (cst.TypeName.Equals("char"))
+                        {
+                            writer.WriteLine();
+                            EmitComment(writer, cst.Comment, null, null);
+                            writer.WriteLineIndent($"public string {name}String {{");
+                            writer.IncreaseIndent();
+                            writer.WriteLineIndent("get");
+                            writer.WriteLineIndent("{");
+                            writer.IncreaseIndent();
+                            writer.WriteLineIndent($"fixed (byte* ptr = {name}) {{");
+                            writer.IncreaseIndent();
+                            writer.WriteLineIndent("return Marshal.PtrToStringAnsi(new IntPtr(ptr));");
+                            writer.DecreaseIndent();
+                            writer.WriteLineIndent("}");
+                            writer.DecreaseIndent();
+                            writer.WriteLineIndent("}");
+                            writer.WriteLineIndent("set");
+                            writer.WriteLineIndent("{");
+                            writer.IncreaseIndent();
+                            writer.WriteLineIndent($"fixed (byte* ptr = {name}) {{");
+                            writer.IncreaseIndent();
+                            writer.WriteLineIndent($"var data = System.Text.Encoding.ASCII.GetBytes(value);");
+                            writer.WriteLineIndent($"var count = Math.Min(data.Length, {fixedBufferSize} - 1);");
+                            writer.WriteLineIndent($"Marshal.Copy(data, 0, new IntPtr(ptr), count);");
+                            writer.WriteLineIndent($"ptr[count] = 0;");
+                            writer.DecreaseIndent();
+                            writer.WriteLineIndent("}");
+                            writer.DecreaseIndent();
+                            writer.WriteLineIndent("}");
+                            writer.DecreaseIndent();
+                            writer.WriteLineIndent("}");
+                        }
+                    }
                     else
                     {
                         var childType = MemberTypeWithPtr(cst);
@@ -1407,7 +1618,6 @@ namespace CodeGenerator
                 else
                     writer.WriteLineIndent($"public {MemberTypeWithPtr(cst)} {name};");
             }
-
             foreach (var cst in @struct.Members)
             {
                 var type = ResolveType(cst.TypeName);
@@ -1492,60 +1702,83 @@ namespace CodeGenerator
                 if (_vkExceptionTypes.TryGetValue(except, out string exceptionName))
                     w.WriteLineIndent($"/// <exception cref=\"VulkanLibrary.Unmanaged.{exceptionName}\"></exception>");
         }
-        
-        private void WriteEnum(TextWriter writer, VkEnum @enum)
+
+        private void WriteEnum(TextWriter writer, VkEnum @enum, bool write)
         {
-            EmitComment(writer, @enum.Comment, null, null);
-            if (@enum.IsBitmask)
-                writer.WriteLineIndent("[Flags]");
+            if (write)
+            {
+                EmitComment(writer, @enum.Comment, null, null);
+                if (@enum.IsBitmask)
+                    writer.WriteLineIndent("[Flags]");
+            }
             var typeName = GetTypeName(@enum);
-            writer.WriteLineIndent($"public enum {typeName} : {@enum.BackingType} {{");
-            writer.IncreaseIndent();
+            if (write)
+            {
+                writer.WriteLineIndent($"public enum {typeName} : {GetTypeName(ResolveType(@enum.BackingType))} {{");
+                writer.IncreaseIndent();
+            }
             foreach (var cst in @enum.Values)
             {
                 var newName =
                     AlphabetizeLeadingNumber(RemoveCommonPrefix(UnderscoresToCamelCase(cst.Name), @enum.TypeName));
                 if (newName.EndsWith("Bit") && @enum.IsBitmask)
                     newName = newName.Substring(0, newName.Length - 3);
-                _constantLookupTable.Add(cst, typeName + "." + newName);
-                EmitComment(writer, cst.Comment, null, null);
-                writer.WriteLineIndent($"{newName} = {cst.Expression},");
-            }
-            writer.DecreaseIndent();
-            writer.WriteLineIndent("}");
-
-            if (!@enum.TypeName.Equals(VkResultType))
-                return;
-
-            writer.WriteLineIndent($"public class VkException : Exception {{");
-            writer.IncreaseIndent();
-            writer.WriteLineIndent("public readonly VkResult Result;");
-            writer.WriteLineIndent("public VkException(VkResult result) { Result = result; }");
-            writer.WriteLineIndent("public static VkException Create(VkResult result) {");
-            writer.IncreaseIndent();
-            writer.WriteLineIndent("if ((int) result >= 0) return null;");
-            writer.WriteLineIndent("switch (result) {");
-            writer.IncreaseIndent();
-            foreach (var cst in @enum.Values)
-            {
-                var res = EvaluateConstantExpr(cst.Expression);
-                if (res < 0)
+                _constantLookupTable[cst] = typeName + "." + newName;
+                if (write)
                 {
-                    var newName =
-                        AlphabetizeLeadingNumber(RemoveCommonPrefix(UnderscoresToCamelCase(cst.Name), @enum.TypeName));
-                    if (newName.EndsWith("Bit") && @enum.IsBitmask)
-                        newName = newName.Substring(0, newName.Length - 3);
-                    writer.WriteLineIndent($"case VkResult.{newName}: return new Vk{newName}();");
+                    EmitComment(writer, cst.Comment, null, null);
+                    if (cst.Extension != null)
+                        RequiresExtension(writer, cst.Extension);
+                    writer.WriteLineIndent($"{newName} = {SubstituteConstantExpression(cst.Expression, true)},");
                 }
             }
-            writer.WriteLineIndent($"default: return new VkException(result);");
+            if (!write)
+                return;
             writer.DecreaseIndent();
             writer.WriteLineIndent("}");
+            if (!@enum.TypeName.Equals(VkResultType))
+                return;
+            writer.WriteLineIndent($"public class VkException : Exception {{");
+            writer.IncreaseIndent();
+            {
+                writer.WriteLineIndent("public readonly VkResult Result;");
+                writer.WriteLineIndent("public VkException(VkResult result) { Result = result; }");
+                writer.WriteLineIndent("public static VkException Create(VkResult result) {");
+                writer.IncreaseIndent();
+                {
+                    writer.WriteLineIndent("if ((int) result >= 0) return null;");
+                    writer.WriteLineIndent("switch (result) {");
+                    writer.IncreaseIndent();
+                    foreach (var cst in @enum.Values)
+                    {
+                        var res = EvaluateConstantExpr(cst.Expression);
+                        if (res < 0)
+                        {
+                            var newName =
+                                AlphabetizeLeadingNumber(RemoveCommonPrefix(UnderscoresToCamelCase(cst.Name),
+                                    @enum.TypeName));
+                            if (newName.EndsWith("Bit") && @enum.IsBitmask)
+                                newName = newName.Substring(0, newName.Length - 3);
+                            writer.WriteLineIndent($"case VkResult.{newName}: return new Vk{newName}();");
+                        }
+                    }
+                    writer.WriteLineIndent($"default: return new VkException(result);");
+                    writer.DecreaseIndent();
+                    writer.WriteLineIndent("}");
+                }
+                writer.DecreaseIndent();
+                writer.WriteLineIndent("}");
+                writer.WriteLineIndent("public static void Check(VkResult result) {");
+                writer.IncreaseIndent();
+                {
+                    writer.WriteLineIndent("var except = Create(result);");
+                    writer.WriteLineIndent("if (except != null) throw except;");
+                    writer.DecreaseIndent();
+                    writer.WriteLineIndent("}");
+                }
+            }
             writer.DecreaseIndent();
             writer.WriteLineIndent("}");
-            writer.DecreaseIndent();
-            writer.WriteLineIndent("}");
-
             _vkExceptionTypes.Clear();
             foreach (var cst in @enum.Values)
             {
@@ -1557,6 +1790,8 @@ namespace CodeGenerator
                     newName = newName.Substring(0, newName.Length - 3);
                 EmitComment(writer, cst.Comment, null, null);
                 _vkExceptionTypes.Add(cst.Name, "Vk" + newName);
+                if (cst.Extension != null)
+                    RequiresExtension(writer, cst.Extension);
                 writer.WriteLineIndent($"public class Vk{newName} : VkException {{");
                 writer.IncreaseIndent();
                 writer.WriteLineIndent($"public Vk{newName}():base(VkResult.{newName}) {{}}");
@@ -1567,24 +1802,37 @@ namespace CodeGenerator
 
         private readonly Dictionary<string, string> _vkExceptionTypes = new Dictionary<string, string>();
 
-        private void WriteConstant(TextWriter writer, VkConstant cst)
+        private static readonly Regex UnsignedExpressionRegex = new Regex(@"[0-9L]U", RegexOptions.IgnoreCase);
+        private static readonly Regex DoubleExpressionRegex = new Regex(@"[0-9.]D", RegexOptions.IgnoreCase);
+        private static readonly Regex FloatExpressionRegex = new Regex(@"[0-9.]F", RegexOptions.IgnoreCase);
+        private static readonly Regex LongExpressionRegex = new Regex(@"[0-9U]L", RegexOptions.IgnoreCase);
+
+        private static readonly Regex NumericExpressionRegex =
+            new Regex(@"^[0-9FLUD.~()-+|&^]*$", RegexOptions.IgnoreCase);
+
+        private void WriteConstant(TextWriter writer, VkConstant cst, bool write)
         {
             var newName =
                 AlphabetizeLeadingNumber(RemoveCommonPrefix(UnderscoresToCamelCase(cst.Name), "Vk"));
-            _constantLookupTable.Add(cst, "Vulkan." + newName);
+            _constantLookupTable[cst] = "Vulkan." + newName;
+            if (!write)
+                return;
             EmitComment(writer, cst.Comment, null, null);
-            var expr = cst.Expression.Replace("ll", "l", StringComparison.OrdinalIgnoreCase);
+            var expr = SubstituteConstantExpression(cst.Expression, true);
             string valueType = null;
-            var unsigned = expr.IndexOf("u", StringComparison.OrdinalIgnoreCase) != -1;
-            if (expr.IndexOf("d", StringComparison.OrdinalIgnoreCase) != -1)
+            var unsigned = UnsignedExpressionRegex.Match(expr).Success;
+            if (DoubleExpressionRegex.Match(expr).Success)
                 valueType = "double";
-            else if (expr.IndexOf("f", StringComparison.OrdinalIgnoreCase) != -1)
+            else if (FloatExpressionRegex.Match(expr).Success)
                 valueType = "float";
-            else if (expr.IndexOf("l", StringComparison.OrdinalIgnoreCase) != -1)
+            else if (LongExpressionRegex.Match(expr).Success)
                 valueType = unsigned ? "ulong" : "long";
             else
                 valueType = unsigned ? "uint" : "int";
-            writer.WriteLineIndent($"public const {valueType} {newName} = {expr};");
+            if (NumericExpressionRegex.IsMatch(expr))
+                writer.WriteLineIndent($"public const {valueType} {newName} = {expr};");
+            else
+                writer.WriteLineIndent($"public const {valueType} {newName} = ({valueType}) {expr};");
         }
 
         private void WriteFunctionPointer(TextWriter writer, VkTypeFunctionPointer ptr)

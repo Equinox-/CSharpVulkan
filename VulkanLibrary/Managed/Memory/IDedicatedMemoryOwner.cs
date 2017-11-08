@@ -4,6 +4,6 @@ namespace VulkanLibrary.Managed.Memory
 {
     public interface IDedicatedMemoryOwner
     {
-        bool SetOwnerOn(ref VkDedicatedAllocationMemoryAllocateInfoNV info);
+        bool SetOwnerOn(ref VkMemoryDedicatedAllocateInfoKHR info);
     }
 }

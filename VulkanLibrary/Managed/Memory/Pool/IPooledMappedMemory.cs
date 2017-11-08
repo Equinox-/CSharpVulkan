@@ -5,8 +5,8 @@ namespace VulkanLibrary.Managed.Memory.Pool
     /// <summary>
     /// Pooled memory that is mapped.
     /// </summary>
-    /// <inheritdoc cref="IPooledMemory"/>
-    public interface IMappedPooledMemory : IPooledMemory
+    /// <inheritdoc cref="IPooledDeviceMemory"/>
+    public interface IPooledMappedMemory : IPooledDeviceMemory
     {
         /// <summary>
         /// The mapped memory associated with this pooled memory.

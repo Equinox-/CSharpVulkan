@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Text;
 using VulkanLibrary.Managed.Handles;
 using VulkanLibrary.Managed.Memory.Mapped;
 using VulkanLibrary.Managed.Utilities;
@@ -66,13 +67,34 @@ namespace VulkanLibrary.Managed.Memory.Pool
         }
 
         /// <summary>
+        /// Dumps information about the pools to a string.
+        /// </summary>
+        /// <returns>info</returns>
+        public string DumpStatistics()
+        {
+            var sb = new StringBuilder();
+            for (var type = 0; type < _poolsByType.Length; type++)
+                foreach (var poolType in (Pool[]) Enum.GetValues(typeof(Pool)))
+                {
+                    var pools = _poolsByType[type, (int) poolType];
+                    if (pools == null || pools.Count == 0)
+                        continue;
+                    sb.AppendLine($"Memory type {0}, Pool type {poolType}");
+                    foreach (var pool in pools)
+                        sb.AppendLine(
+                            $" - {pool.FreeSpace}/{pool.Capacity}\t({100 * (double) pool.FreeSpace / pool.Capacity:F2} % free");
+                }
+            return sb.ToString();
+        }
+
+        /// <summary>
         /// Allocates a pooled memory handle of the given size, on the given pool.
         /// </summary>
         /// <param name="type">Required memory type</param>
         /// <param name="poolType">Pool type</param>
         /// <param name="size">Size of allocated region</param>
         /// <returns>Memory handle</returns>
-        public PooledMemoryHandle Allocate(MemoryType type, Pool poolType, ulong size)
+        public MemoryHandle Allocate(MemoryType type, Pool poolType, ulong size)
         {
             var pools = PoolForType(type, poolType);
             foreach (var pool in pools)
@@ -80,26 +102,27 @@ namespace VulkanLibrary.Managed.Memory.Pool
                 {
                     try
                     {
-                        return new PooledMemoryHandle(pool, pool.Allocate(size));
+                        return new MemoryHandle(pool, pool.Allocate(size));
                     }
-                    catch (OutOfMemoryException e)
+                    catch (OutOfMemoryException)
                     {
-                        continue;
+                        // continue onto the next pool
                     }
                 }
+            // Create a new pool
             var blockCount = PoolBlockCount;
             var blockSize = BlockSizeForPool(poolType);
             blockCount = System.Math.Max((ulong) System.Math.Ceiling(size / (double) blockSize) * 4UL, blockCount);
             var npool = new VulkanMemoryPool(Device, blockSize, type.TypeIndex, blockCount, type.HostVisible);
             pools.Add(npool);
-            return new PooledMemoryHandle(npool, npool.Allocate(size));
+            return new MemoryHandle(npool, npool.Allocate(size));
         }
 
         /// <summary>
         /// Frees the given pooled memory block.
         /// </summary>
         /// <param name="mem">block to free</param>
-        public void Free(PooledMemoryHandle mem)
+        public void Free(MemoryHandle mem)
         {
             mem.Free();
         }
@@ -107,13 +130,13 @@ namespace VulkanLibrary.Managed.Memory.Pool
         /// <summary>
         /// Handle for multi-pool allocated memory.
         /// </summary>
-        /// <inheritdoc cref="IMappedPooledMemory"/>
-        public struct PooledMemoryHandle : IMappedPooledMemory, IDisposable
+        /// <inheritdoc cref="IPooledMappedMemory"/>
+        public struct MemoryHandle : IPooledMappedMemory, IDisposable
         {
             private readonly VulkanMemoryPool _pool;
             private VulkanMemoryPool.MemoryHandle _handle;
 
-            internal PooledMemoryHandle(VulkanMemoryPool pool, VulkanMemoryPool.MemoryHandle handle)
+            internal MemoryHandle(VulkanMemoryPool pool, VulkanMemoryPool.MemoryHandle handle)
             {
                 _handle = handle;
                 _pool = pool;
@@ -124,17 +147,23 @@ namespace VulkanLibrary.Managed.Memory.Pool
             {
                 [MethodImpl(MethodImplOptions.AggressiveInlining)] get { return _handle.Size; }
             }
-            
+
             /// <inheritdoc cref="IPooledMemory.Offset"/>
             public ulong Offset
             {
                 [MethodImpl(MethodImplOptions.AggressiveInlining)] get { return _handle.Offset; }
             }
 
-            /// <inheritdoc cref="IMappedPooledMemory.MappedMemory"/>
+            /// <inheritdoc cref="IPooledMappedMemory.MappedMemory"/>
             public IMappedMemory MappedMemory
             {
-                [MethodImpl(MethodImplOptions.AggressiveInlining)] get { return _handle.MappedMemory;  }
+                [MethodImpl(MethodImplOptions.AggressiveInlining)] get { return _handle.MappedMemory; }
+            }
+
+            /// <inheritdoc cref="IPooledDeviceMemory.BackingMemory"/>
+            public DeviceMemory BackingMemory
+            {
+                [MethodImpl(MethodImplOptions.AggressiveInlining)] get { return _handle.BackingMemory; }
             }
 
             internal void Free()
