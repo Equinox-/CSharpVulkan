@@ -23,7 +23,7 @@ namespace VulkanLibrary.Managed.Memory.Pool
 
         private const ulong PoolBlockCount = 128;
 
-        private static ulong BlockSizeForPool(Pool p)
+        public static ulong BlockSizeForPool(Pool p)
         {
             switch (p)
             {

@@ -689,6 +689,22 @@ namespace CodeGenerator
             return sb.ToString();
         }
 
+        private void WriteCommandArgs(TextWriter writer, Dictionary<VkMember, string> dummies, VkCommand cmd)
+        {
+            for (var i = 0; i < cmd.Arguments.Count; i++)
+            {
+                if (i > 0)
+                    writer.Write(", ");
+                // ReSharper disable once ConvertIfStatementToConditionalTernaryExpression
+                if (cmd.Arguments[i].FixedBufferSize != null)
+                    writer.Write(dummies[cmd.Arguments[i]]);
+                else
+                    writer.Write(MemberTypeWithPtr(cmd.Arguments[i]));
+                writer.Write(" ");
+                writer.Write(SanitizeVariableName(cmd.Arguments[i].Name));
+            }
+        }
+
         private void WriteCommand(TextWriter writer, VkCommand cmd)
         {
             var dummies = new Dictionary<VkMember, string>();
@@ -702,12 +718,26 @@ namespace CodeGenerator
 
             {
                 EmitComment(writer, cmd.Comment, cmd.Arguments, cmd.ReturnType, cmd.ErrorCodes);
-                writer.WriteLineIndent(
-                    $"[DllImport(\"{VulkanLibraryName}\", CallingConvention = CallingConvention.StdCall)]");
+                var exportUsingGetProc = false;
+                if (cmd.Extension?.Type != null)
+                {
+                    if (cmd.Extension.Type.IndexOf("Instance",
+                            StringComparison.OrdinalIgnoreCase) == 0)
+                        exportUsingGetProc = cmd.Arguments.Any(x => x.TypeName.Equals("VkInstance"));
+                    else
+                        exportUsingGetProc = cmd.Arguments.Any(x => x.TypeName.Equals("VkDevice"));
+                }
                 if (cmd.Extension != null)
                     RequiresExtension(writer, cmd.Extension);
+                if (!exportUsingGetProc)
+                    writer.WriteLineIndent(
+                        $"[DllImport(\"{VulkanLibraryName}\", CallingConvention = CallingConvention.StdCall)]");
                 writer.WriteIndent();
-                writer.Write("internal static extern unsafe ");
+                writer.Write("public unsafe ");
+                if (exportUsingGetProc)
+                    writer.Write("delegate ");
+                else
+                    writer.Write("static extern ");
                 // ReSharper disable once ConvertIfStatementToConditionalTernaryExpression
                 if (cmd.ReturnType.FixedBufferSize != null)
                     writer.Write(dummies[cmd.ReturnType]);
@@ -715,20 +745,58 @@ namespace CodeGenerator
                     writer.Write(MemberTypeWithPtr(cmd.ReturnType));
                 writer.Write(" ");
                 writer.Write(cmd.TypeName);
+                if (exportUsingGetProc)
+                    writer.Write("Delegate");
                 writer.Write("(");
-                for (var i = 0; i < cmd.Arguments.Count; i++)
-                {
-                    if (i > 0)
-                        writer.Write(", ");
-                    // ReSharper disable once ConvertIfStatementToConditionalTernaryExpression
-                    if (cmd.Arguments[i].FixedBufferSize != null)
-                        writer.Write(dummies[cmd.Arguments[i]]);
-                    else
-                        writer.Write(MemberTypeWithPtr(cmd.Arguments[i]));
-                    writer.Write(" ");
-                    writer.Write(SanitizeVariableName(cmd.Arguments[i].Name));
-                }
+                WriteCommandArgs(writer, dummies, cmd);
                 writer.WriteLine(");");
+                if (exportUsingGetProc)
+                {
+                    writer.WriteLine();
+                    writer.WriteLineIndent($"private static {cmd.TypeName}Delegate _{cmd.TypeName} = null;");
+                    writer.WriteLine();
+                    RequiresExtension(writer, cmd.Extension);
+                    writer.WriteIndent();
+                    writer.Write($"public static unsafe ");
+                    // ReSharper disable once ConvertIfStatementToConditionalTernaryExpression
+                    if (cmd.ReturnType.FixedBufferSize != null)
+                        writer.Write(dummies[cmd.ReturnType]);
+                    else
+                        writer.Write(MemberTypeWithPtr(cmd.ReturnType));
+                    writer.Write(" ");
+                    writer.Write(cmd.TypeName);
+                    writer.Write("(");
+                    WriteCommandArgs(writer, dummies, cmd);
+                    writer.WriteLine(") {");
+                    writer.IncreaseIndent();
+                    try
+                    {
+                        var getProcInvoke =
+                            cmd.Extension.Type.IndexOf("Instance", StringComparison.OrdinalIgnoreCase) == 0
+                                ? cmd.Arguments.First(x => x.TypeName.Equals("VkInstance")).Name +
+                                  ".GetInstanceProcAddr"
+                                : cmd.Arguments.First(x => x.TypeName.Equals("VkDevice")).Name + ".GetDeviceProcAddr";
+                        writer.WriteLineIndent($"if (_{cmd.TypeName} == null)");
+                        writer.IncreaseIndent();
+                        writer.WriteLineIndent(
+                            $"_{cmd.TypeName} = Marshal.GetDelegateForFunctionPointer<{cmd.TypeName}Delegate>({getProcInvoke}(\"{cmd.TypeName}\"));");
+                        writer.DecreaseIndent();
+                        writer.WriteLine();
+                        writer.WriteIndent();
+                        if (GetTypeName(ResolveType(cmd.ReturnType.TypeName)) != "void")
+                            writer.Write("return ");
+                        writer.Write($"_{cmd.TypeName}(");
+                        writer.Write(string.Join(", ", cmd.Arguments.Select(x => SanitizeVariableName(x.Name))));
+                        writer.WriteLine(");");
+                        writer.DecreaseIndent();
+                        writer.WriteLineIndent("}");
+                    }
+                    catch
+                    {
+                        Console.WriteLine(cmd);
+                        throw;
+                    }
+                }
             }
 
             #endregion

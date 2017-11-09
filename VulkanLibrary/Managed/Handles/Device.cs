@@ -151,7 +151,7 @@ namespace VulkanLibrary.Managed.Handles
         public SwapchainKHRBuilder SwapchainBuilder(SurfaceKHR surface, VkExtent2D? size = null)
         {
             if (!size.HasValue)
-                size = PhysicalDevice.Handle.GetPhysicalDeviceSurfaceCapabilitiesKHR(surface.Handle).CurrentExtent;
+                size = surface.Capabilities(PhysicalDevice).CurrentExtent;
             return new SwapchainKHRBuilder(surface, this, size.Value);
         }
 
@@ -213,6 +213,20 @@ namespace VulkanLibrary.Managed.Handles
         public RenderPassWithIdentifiersBuilder<TAttachment, TPass> RenderPassBuilder<TAttachment, TPass>()
         {
             return new RenderPassWithIdentifiersBuilder<TAttachment, TPass>(this);
+        }
+
+        /// <summary>
+        /// Starts building a new pipeline layout
+        /// </summary>
+        /// <returns>builder</returns>
+        public PipelineLayoutBuilder PipelineLayoutBuilder()
+        {
+            return new PipelineLayoutBuilder(this);
+        }
+
+        public ShaderModule LoadShader(byte[] code)
+        {
+            return new ShaderModule(this, code);
         }
     }
 }

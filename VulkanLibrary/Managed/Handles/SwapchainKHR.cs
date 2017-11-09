@@ -115,14 +115,34 @@ namespace VulkanLibrary.Managed.Handles
         /// <summary>
         /// Creates a new swapchain with identical settings and the given dimension, then destroys this swapchain.
         /// </summary>
-        /// <param name="dimensions">New dimensions</param>
+        /// <param name="dimensions">New dimensions or null to query the surface</param>
         /// <returns>New swapchain</returns>
-        public SwapchainKHR Recreate(VkExtent2D dimensions)
+        public SwapchainKHR Recreate(VkExtent2D? dimensions = null)
         {
+            if (!dimensions.HasValue)
+                dimensions = SurfaceKHR.Capabilities(PhysicalDevice).CurrentExtent;
             return new SwapchainKHR(SurfaceKHR, Device, _info.MinImageCount,
                 _info.ImageArrayLayers, _info.ImageUsage, _info.ImageFormat, _info.ImageColorSpace,
-                dimensions, _info.CompositeAlpha, _info.PresentMode, _info.Clipped,
-                _info.PreTransform, _info.ImageSharingMode, _sharingQueueInfo);
+                dimensions.Value, _info.CompositeAlpha, _info.PresentMode, _info.Clipped,
+                _info.PreTransform, _info.ImageSharingMode, _sharingQueueInfo, this);
+        }
+
+
+        public uint AcquireNextImage(VkSemaphore semaphore, VkFence fence, ulong timeout = ulong.MaxValue)
+        {
+            unsafe
+            {
+                uint index = uint.MaxValue;
+                Device.Handle.AcquireNextImageKHR(Handle, timeout, semaphore, fence, &index);
+                return index;
+            }
+        }
+
+        public uint AcquireNextImage(Semaphore semaphore, Fence fence, ulong timeout = ulong.MaxValue)
+        {
+            semaphore?.AssertValid();
+            fence?.AssertValid();
+            return AcquireNextImage(semaphore?.Handle ?? VkSemaphore.Null, fence?.Handle ?? VkFence.Null, timeout);
         }
     }
 }

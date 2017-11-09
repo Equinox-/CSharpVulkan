@@ -28,8 +28,8 @@ namespace VulkanLibrary.Managed.Memory.Mapped
             if (size == Vulkan.WholeSize)
                 size = backing.Capacity - offset;
 
-            Debug.Assert(offset + size < backing.Capacity,
-                $"End of mapped region is beyond allocated capacity. {offset} + {size} >= {backing.Capacity}");
+            Debug.Assert(offset + size <= backing.Capacity,
+                $"End of mapped region is beyond allocated capacity. {offset} + {size} > {backing.Capacity}");
             Debug.Assert(backing.MemoryType.HostVisible, $"Can not map memory regions on a non host visible allocation");
             
             Backing = backing;

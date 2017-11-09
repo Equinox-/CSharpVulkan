@@ -25,14 +25,13 @@ namespace VulkanLibrary.Managed.Handles
         }
 
         /// <inheritdoc/>
-        public class AttachmentBuilder : RenderPassBuilder.AttachmentBuilderBase<AttachmentBuilder>
+        public class AttachmentBuilder : RenderPassBuilderBase.AttachmentBuilderBase<AttachmentBuilder>
         {
             private readonly RenderPassWithIdentifiersBuilder<TAttachment, TPass> _builder;
             private readonly TAttachment _id;
-            private VkAttachmentDescription _desc;
 
             internal AttachmentBuilder(RenderPassWithIdentifiersBuilder<TAttachment, TPass> builder, TAttachment id,
-                VkFormat format, VkImageLayout finalLayout)
+                VkFormat format, VkImageLayout finalLayout, VkSampleCountFlag samples)
             {
                 _builder = builder;
                 _desc = new VkAttachmentDescription()
@@ -44,7 +43,8 @@ namespace VulkanLibrary.Managed.Handles
                     LoadOp = VkAttachmentLoadOp.DontCare,
                     StoreOp = VkAttachmentStoreOp.DontCare,
                     StencilLoadOp = VkAttachmentLoadOp.DontCare,
-                    StencilStoreOp = VkAttachmentStoreOp.DontCare
+                    StencilStoreOp = VkAttachmentStoreOp.DontCare,
+                    Samples = samples
                 };
             }
 
@@ -62,14 +62,17 @@ namespace VulkanLibrary.Managed.Handles
         /// <summary>
         /// Starts building a new attachment for this render pass
         /// </summary>
+        /// <param name="id">identifier for the attachment</param>
         /// <param name="format">attachment's format</param>
         /// <param name="finalLayout">attachment's final image layout</param>
+        /// <param name="samples">attachment's sample count</param>
         /// <returns>attachment builder</returns>
-        public AttachmentBuilder WithAttachment(TAttachment id, VkFormat format, VkImageLayout finalLayout)
+        public AttachmentBuilder WithAttachment(TAttachment id, VkFormat format, VkImageLayout finalLayout,
+            VkSampleCountFlag samples = VkSampleCountFlag.Count1)
         {
             Debug.Assert(!_attachmentOrder.Contains(id));
             _attachmentOrder.Add(id);
-            return new AttachmentBuilder(this, id, format, finalLayout);
+            return new AttachmentBuilder(this, id, format, finalLayout, samples);
         }
 
         private struct LazyAttachmentReference
@@ -134,7 +137,8 @@ namespace VulkanLibrary.Managed.Handles
             }
 
             /// <inheritdoc/>
-            public SubpassBuilder ColorAttachment(TAttachment attachment, VkImageLayout layout)
+            public SubpassBuilder ColorAttachment(TAttachment attachment,
+                VkImageLayout layout = VkImageLayout.ColorAttachmentOptimal)
             {
                 _colorAttachmentReferences.Add(new LazyAttachmentReference() {Id = attachment, Layout = layout});
                 return this;
@@ -273,9 +277,9 @@ namespace VulkanLibrary.Managed.Handles
                 {
                     DependencyFlags = 0,
                     DstAccessMask = 0,
-                    DstStageMask = 0,
+                    DstStageMask = VkPipelineStageFlag.AllCommands,
                     SrcAccessMask = 0,
-                    SrcStageMask = 0
+                    SrcStageMask = VkPipelineStageFlag.AllCommands
                 };
             }
 
@@ -335,23 +339,23 @@ namespace VulkanLibrary.Managed.Handles
         public RenderPassWithIdentifiers<TAttachment, TPass> Build()
         {
             Dictionary<TPass, int> passInFactory = new Dictionary<TPass, int>();
+            foreach (var pass in _subpassBuilders)
+                passInFactory.Add(pass.Key, 0);
             foreach (var dep in _dependencyBuilders)
-                if (!dep.DstExternal)
-                {
-                    passInFactory[dep.DstPass] = 1 + (passInFactory.TryGetValue(dep.DstPass, out var k) ? k : 0);
-                }
+                if (!dep.DstExternal && !dep.SrcExternal)
+                    passInFactory[dep.DstPass]++;
             var passComparer = EqualityComparer<TPass>.Default;
             List<TPass> passOrder = new List<TPass>();
             while (passOrder.Count < _subpassBuilders.Count)
             {
                 var insert = passInFactory.Where(x => x.Value == 0).Select(x => x.Key).ToList();
                 if (insert.Count == 0)
-                    throw new Exception($"Circular dependency detected in {string.Join(", ", passInFactory.Keys)}");
+                    throw new Exception($"Circular dependency detected in {string.Join(", ", passInFactory)}.");
                 passOrder.AddRange(insert);
                 foreach (var k in insert)
                 foreach (var dep in _dependencyBuilders.Where(x =>
                     !x.SrcExternal && !x.DstExternal && passComparer.Equals(x.SrcPass, k)))
-                    passInFactory[dep.DstPass] -= 1;
+                    passInFactory[dep.DstPass]--;
             }
             var attachmentToId = _attachmentOrder.Select((x, i) => new KeyValuePair<TAttachment, uint>(x, (uint) i))
                 .ToDictionary(a => a.Key, b => b.Value);
@@ -361,14 +365,8 @@ namespace VulkanLibrary.Managed.Handles
 
             var pins = new List<GCHandle>();
             var attachmentDesc = new VkAttachmentDescription[_attachmentOrder.Count];
-            if (attachmentDesc.Length > 0)
-                pins.Add(GCHandle.Alloc(attachmentDesc, GCHandleType.Pinned));
             var passDesc = new VkSubpassDescription[passOrder.Count];
-            if (passDesc.Length > 0)
-                pins.Add(GCHandle.Alloc(passDesc, GCHandleType.Pinned));
             var dependencyDesc = new VkSubpassDependency[_dependencyBuilders.Count];
-            if (dependencyDesc.Length > 0)
-                pins.Add(GCHandle.Alloc(dependencyDesc, GCHandleType.Pinned));
             try
             {
                 foreach (var attachment in attachmentToId)
@@ -383,32 +381,28 @@ namespace VulkanLibrary.Managed.Handles
                     (a, b) => a.SrcSubpass != Vulkan.SubpassExternal
                         ? a.SrcSubpass.CompareTo(b.SrcSubpass)
                         : a.DstSubpass.CompareTo(b.DstSubpass));
-
+                
                 unsafe
                 {
-                    var info = new VkRenderPassCreateInfo()
+                    fixed (VkAttachmentDescription* attachPtr = attachmentDesc)
+                    fixed (VkSubpassDescription* passPtr = passDesc)
+                    fixed (VkSubpassDependency* depPtr = dependencyDesc)
                     {
-                        SType = VkStructureType.RenderPassCreateInfo,
-                        Flags = 0,
-                        PNext = (void*) 0,
-                        AttachmentCount = (uint) attachmentDesc.Length,
-                        PAttachments = attachmentDesc.Length > 0
-                            ? (VkAttachmentDescription*) Marshal.UnsafeAddrOfPinnedArrayElement(attachmentDesc, 0)
-                                .ToPointer()
-                            : (VkAttachmentDescription*) 0,
-                        SubpassCount = (uint) passDesc.Length,
-                        PSubpasses = passDesc.Length > 0
-                            ? (VkSubpassDescription*) Marshal.UnsafeAddrOfPinnedArrayElement(passDesc, 0)
-                                .ToPointer()
-                            : (VkSubpassDescription*) 0,
-                        DependencyCount = (uint) dependencyDesc.Length,
-                        PDependencies = dependencyDesc.Length > 0
-                            ? (VkSubpassDependency*) Marshal.UnsafeAddrOfPinnedArrayElement(dependencyDesc, 0)
-                                .ToPointer()
-                            : (VkSubpassDependency*) 0,
-                    };
-                    return new RenderPassWithIdentifiers<TAttachment, TPass>(_dev, info, _attachmentOrder.ToArray(),
-                        passOrder.ToArray());
+                        var info = new VkRenderPassCreateInfo()
+                        {
+                            SType = VkStructureType.RenderPassCreateInfo,
+                            Flags = 0,
+                            PNext = (void*) 0,
+                            AttachmentCount = (uint) attachmentDesc.Length,
+                            PAttachments = attachPtr,
+                            SubpassCount = (uint) passDesc.Length,
+                            PSubpasses = passPtr,
+                            DependencyCount = (uint) dependencyDesc.Length,
+                            PDependencies = depPtr,
+                        };
+                        return new RenderPassWithIdentifiers<TAttachment, TPass>(_dev, info, _attachmentOrder.ToArray(),
+                            passOrder.ToArray());
+                    }
                 }
             }
             finally

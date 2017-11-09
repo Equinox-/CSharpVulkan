@@ -47,7 +47,7 @@ namespace VulkanLibrary.Managed.Utilities
         [DebuggerStepThrough]
         public virtual void AssertValid()
         {
-            Debug.Assert(_disposed == (int) LifeState.Dead, "Resource was used after disposal");
+            Debug.Assert(_disposed != (int) LifeState.Dead, "Resource was used after disposal");
         }
 
         /// <summary>

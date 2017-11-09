@@ -106,17 +106,24 @@ namespace VulkanLibrary.Managed.Handles
         /// </summary>
         /// <param name="preferredFlags">Prefer to have these options</param>
         /// <param name="requiredFlags">Require these options</param>
+        /// <param name="preferredPred">Predicate that is preferred to be true, or null to ignore</param>
+        /// <param name="requiredPred">Predicate that is required to be true, or null to ignore</param>
         /// <returns>the queue family index</returns>
         /// <exception cref="NotSupportedException">no such queue family exists</exception>
-        public uint FindQueueFamily(VkQueueFlag preferredFlags, VkQueueFlag requiredFlags)
+        public uint FindQueueFamily(VkQueueFlag preferredFlags, VkQueueFlag requiredFlags,
+            Func<PhysicalDevice, uint, bool> preferredPred = null,
+            Func<PhysicalDevice, uint, bool> requiredPred = null)
         {
             var queues = Handle.GetQueueFamilyProperties();
             var both = preferredFlags | requiredFlags;
             for (var i = 0; i < queues.Length; i++)
-                if ((queues[i].QueueFlags & both) == both)
+                if ((queues[i].QueueFlags & both) == both
+                    && (preferredPred == null || preferredPred.Invoke(this, (uint) i))
+                    && (requiredPred == null || requiredPred.Invoke(this, (uint) i)))
                     return (uint) i;
             for (var i = 0; i < queues.Length; i++)
-                if ((queues[i].QueueFlags & requiredFlags) == requiredFlags)
+                if ((queues[i].QueueFlags & requiredFlags) == requiredFlags
+                    && (requiredPred == null || requiredPred.Invoke(this, (uint) i)))
                     return (uint) i;
             throw new NotSupportedException($"Queue family with flags {requiredFlags} isn't supported");
         }

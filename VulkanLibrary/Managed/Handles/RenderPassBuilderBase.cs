@@ -28,7 +28,7 @@ namespace VulkanLibrary.Managed.Handles
             /// <param name="attachment">Attachment to use as input</param>
             /// <param name="layout">Layout of attachment</param>
             /// <returns>this</returns>
-            TBuilder InputAttachment(TAttachment attachment, VkImageLayout layout);
+            TBuilder InputAttachment(TAttachment attachment, VkImageLayout layout = VkImageLayout.ShaderReadOnlyOptimal);
 
             /// <summary>
             /// Sets the given attachment as a resolve attachment.
@@ -46,7 +46,7 @@ namespace VulkanLibrary.Managed.Handles
             /// <param name="attachment">Attachment to use as color</param>
             /// <param name="layout">Layout of attachment</param>
             /// <returns>this</returns>
-            TBuilder ColorAttachment(TAttachment attachment, VkImageLayout layout);
+            TBuilder ColorAttachment(TAttachment attachment, VkImageLayout layout = VkImageLayout.ColorAttachmentOptimal);
 
             /// <summary>
             /// Sets the given attachment as the depth stencil attachment.
@@ -55,7 +55,7 @@ namespace VulkanLibrary.Managed.Handles
             /// <param name="attachment">Attachment to use as depth/stencil</param>
             /// <param name="layout">Layout of attachment</param>
             /// <returns>this</returns>
-            TBuilder DepthStencilAttachment(TAttachment attachment, VkImageLayout layout);
+            TBuilder DepthStencilAttachment(TAttachment attachment, VkImageLayout layout = VkImageLayout.DepthStencilAttachmentOptimal);
         }
 
         /// <summary>
@@ -155,6 +155,67 @@ namespace VulkanLibrary.Managed.Handles
             public TBuilder Stage(VkPipelineStageFlag src, VkPipelineStageFlag dst)
             {
                 return SrcStage(src).DstStage(dst);
+            }
+        }
+
+        public class AttachmentBuilderBase<TBuilder> where TBuilder : AttachmentBuilderBase<TBuilder>
+        {
+            protected VkAttachmentDescription _desc;
+
+            /// <summary>
+            /// Specify the initial layout for this attachment 
+            /// </summary>
+            /// <param name="initial">Initial layout</param>
+            /// <returns>this</returns>
+            public TBuilder InitialLayout(VkImageLayout initial)
+            {
+                _desc.InitialLayout = initial;
+                return (TBuilder) this;
+            }
+
+            /// <summary>
+            /// Specifies if the attachment may alias physical memory of another attachment in the same render pass.
+            /// <see cref="VkAttachmentDescriptionFlag.MayAlias"/>
+            /// </summary>
+            /// <param name="flag">may alias</param>
+            /// <returns>this</returns>
+            public TBuilder MayAlias(bool flag)
+            {
+                if (!flag)
+                    _desc.Flags = (_desc.Flags & ~VkAttachmentDescriptionFlag.MayAlias);
+                else
+                    _desc.Flags |= VkAttachmentDescriptionFlag.MayAlias;
+                return (TBuilder) this;
+            }
+
+            /// <summary>
+            /// Specifies the load operation of this attachment.
+            /// </summary>
+            /// <param name="op">Load operation</param>
+            /// <param name="stencilOp">Stencil load operation, or null if use <c>op</c></param>
+            /// <returns>this</returns>
+            public TBuilder LoadOp(VkAttachmentLoadOp op, VkAttachmentLoadOp? stencilOp = null)
+            {
+                if (!stencilOp.HasValue)
+                    stencilOp = op;
+                _desc.LoadOp = op;
+                _desc.StencilLoadOp = stencilOp.Value;
+                return (TBuilder) this;
+            }
+
+            /// <summary>
+            /// Specifies the store operation of this attachment.
+            /// </summary>
+            /// <param name="op">Store operation</param>
+            /// <param name="stencilOp">Stencil store operation, or null if use <c>op</c></param>
+            /// <returns>this</returns>
+            public TBuilder StoreOp(VkAttachmentStoreOp op, VkAttachmentStoreOp? stencilOp = null)
+            {
+                if (!stencilOp.HasValue)
+                    stencilOp = op;
+                _desc.StoreOp = op;
+                _desc.StencilStoreOp = stencilOp.Value;
+                return (TBuilder) this;
             }
         }
     }

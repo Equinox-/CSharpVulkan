@@ -56,9 +56,17 @@ namespace VulkanLibrary.Managed.Handles
         public DeviceBuilder WithQueueFamily(VkQueueFlag preferredFlags, VkQueueFlag requiredFlags,
             params float[] priorities)
         {
+            return WithQueueFamily(preferredFlags, requiredFlags, null, null, priorities);
+        }
+
+        public DeviceBuilder WithQueueFamily(VkQueueFlag preferredFlags, VkQueueFlag requiredFlags,
+            Func<PhysicalDevice, uint, bool> preferredPred,
+            Func<PhysicalDevice, uint, bool> requiredPred,
+            params float[] priorities)
+        {
             Debug.Assert(_valid);
             _unmanagedPointers.Add(GCHandle.Alloc(priorities, GCHandleType.Pinned));
-            var family = _physicalDevice.FindQueueFamily(preferredFlags, requiredFlags);
+            var family = _physicalDevice.FindQueueFamily(preferredFlags, requiredFlags, preferredPred, requiredPred);
             unsafe
             {
                 _queueInfo.Add(new VkDeviceQueueCreateInfo()
@@ -85,7 +93,7 @@ namespace VulkanLibrary.Managed.Handles
             }
             _valid = false;
         }
-        
+
         /// <summary>
         /// Builds the device described by this builder.  Also calls <see cref="Dispose"/>
         /// </summary>

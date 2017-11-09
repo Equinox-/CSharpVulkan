@@ -43,5 +43,15 @@ namespace VulkanLibrary.Managed.Handles
             for (var i = 0; i < passes.Length; i++)
                 _passToId[passes[i]] = (uint) i;
         }
+        
+        public new GraphicsPipelineBuilder<TAttachment> PipelineBuilder(uint subpass, PipelineLayout layout)
+        {
+            return new GraphicsPipelineBuilder<TAttachment>(this, subpass, layout, AttachmentId);
+        }
+
+        public new FramebufferBuilder<TAttachment> FramebufferBuilder(VkExtent2D size, uint layers = 1)
+        {
+            return new FramebufferBuilder<TAttachment>(this, size, AttachmentId, layers);
+        }
     }
 }

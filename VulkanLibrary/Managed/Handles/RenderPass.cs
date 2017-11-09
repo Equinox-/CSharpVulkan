@@ -1,4 +1,6 @@
-﻿using VulkanLibrary.Unmanaged;
+﻿using System.Runtime.InteropServices;
+using VulkanLibrary.Unmanaged;
+using VulkanLibrary.Unmanaged.Handles;
 
 namespace VulkanLibrary.Managed.Handles
 {
@@ -11,6 +13,21 @@ namespace VulkanLibrary.Managed.Handles
             {
                 Handle = dev.Handle.CreateRenderPass(&info, Instance.AllocationCallbacks);
             }
+        }
+        public RenderPass(Device dev, VkRenderPass handle)
+        {
+            Device = dev;
+            Handle = handle;
+        }
+
+        public GraphicsPipelineBuilder<uint> PipelineBuilder(uint subpass, PipelineLayout layout)
+        {
+            return new GraphicsPipelineBuilder<uint>(this, subpass, layout, (x) => x);
+        }
+
+        public FramebufferBuilder<uint> FramebufferBuilder(VkExtent2D size, uint layers = 1)
+        {
+            return new FramebufferBuilder<uint>(this, size, (x) => x, layers);
         }
     }
 }
