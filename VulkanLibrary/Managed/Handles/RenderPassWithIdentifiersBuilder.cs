@@ -33,6 +33,7 @@ namespace VulkanLibrary.Managed.Handles
             internal AttachmentBuilder(RenderPassWithIdentifiersBuilder<TAttachment, TPass> builder, TAttachment id,
                 VkFormat format, VkImageLayout finalLayout, VkSampleCountFlag samples)
             {
+                _id = id;
                 _builder = builder;
                 _desc = new VkAttachmentDescription()
                 {
@@ -261,7 +262,6 @@ namespace VulkanLibrary.Managed.Handles
             private readonly RenderPassWithIdentifiersBuilder<TAttachment, TPass> _builder;
             internal readonly TPass SrcPass, DstPass;
             internal readonly bool SrcExternal, DstExternal;
-            private VkSubpassDependency _desc;
 
             internal DependencyBuilder(RenderPassWithIdentifiersBuilder<TAttachment, TPass> builder, TPass srcPass,
                 TPass dstPass, bool srcExternal,

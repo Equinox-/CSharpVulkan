@@ -28,7 +28,7 @@ namespace VulkanLibrary.Managed.Handles
         {
             return _queues[queueGroup][queueIndex];
         }
-        
+
         /// <summary>
         /// Gets all queues on this device
         /// </summary>
@@ -36,6 +36,18 @@ namespace VulkanLibrary.Managed.Handles
 
         private readonly HashSet<VkExtension> _enabledExtensions;
         private readonly HashSet<string> _enableExtensionsByName;
+
+        public struct QueueCreateInfo
+        {
+            public readonly uint Family;
+            public readonly IReadOnlyList<float> Priorities;
+
+            public QueueCreateInfo(uint family, params float[] prior)
+            {
+                Family = family;
+                Priorities = new List<float>(prior);
+            }
+        }
 
         /// <summary>
         /// Creates a new device and queues
@@ -49,7 +61,7 @@ namespace VulkanLibrary.Managed.Handles
         public Device(PhysicalDevice physDevice, ICollection<VkExtension> preferredExtensions,
             ICollection<VkExtension> requiredExtensions,
             ICollection<string> preferredLayers, ICollection<string> requiredLayers,
-            VkDeviceQueueCreateInfo[] queueOptions)
+            QueueCreateInfo[] queueOptions)
         {
             PhysicalDevice = physDevice;
 
@@ -84,58 +96,105 @@ namespace VulkanLibrary.Managed.Handles
             Console.WriteLine($"Using device layers: {string.Join(", ", layersToUse)}");
             Console.WriteLine($"Using device extensions: {string.Join(", ", extensionsToUse)}");
 
-            unsafe
+            var pins = new List<GCHandle>();
+            var queueOptionsRedirect = new int[queueOptions.Length];
+            try
             {
-                var layersToUseAnsi = new IntPtr[layersToUse.Count];
-                for (var i = 0; i < layersToUse.Count; i++)
-                    layersToUseAnsi[i] = Marshal.StringToHGlobalAnsi(layersToUse[i]);
-                var extensionsToUseAnsi = new IntPtr[extensionsToUse.Count];
-                for (var i = 0; i < extensionsToUse.Count; i++)
-                    extensionsToUseAnsi[i] = Marshal.StringToHGlobalAnsi(extensionsToUse[i]);
-
-                var pinnedLayersToUse = GCHandle.Alloc(layersToUseAnsi, GCHandleType.Pinned);
-                var pinnedExtensionsToUse = GCHandle.Alloc(extensionsToUseAnsi, GCHandleType.Pinned);
-                try
+                VkDeviceQueueCreateInfo[] queueCreateInfo;
                 {
-                    fixed (VkDeviceQueueCreateInfo* queueOptionsPtr = queueOptions)
+                    var queueOptionsRewrite = new Dictionary<uint, List<float>>();
+                    for (var queueId = 0; queueId < queueOptions.Length; queueId++)
                     {
-                        var desiredFeatures = ChooseDeviceFeatures();
-                        var deviceCreateInfo = new VkDeviceCreateInfo()
+                        var opti = queueOptions[queueId];
+                        if (opti.Priorities.Count == 0)
+                            continue;
+                        if (!queueOptionsRewrite.TryGetValue(opti.Family, out var list))
+                            list = queueOptionsRewrite[opti.Family] = new List<float>();
+                        queueOptionsRedirect[queueId] = list.Count;
+                        list.AddRange(opti.Priorities);
+                    }
+                    queueCreateInfo = new VkDeviceQueueCreateInfo[queueOptionsRewrite.Count];
+                    var family = 0;
+                    foreach (var kv in queueOptionsRewrite)
+                    {
+                        unsafe
                         {
-                            SType = VkStructureType.DeviceCreateInfo,
-                            QueueCreateInfoCount = (uint) queueOptions.Length,
-                            PQueueCreateInfos = queueOptionsPtr,
-                            PEnabledFeatures = &desiredFeatures,
-                            EnabledExtensionCount = (uint) extensionsToUse.Count,
-                            PpEnabledExtensionNames = extensionsToUse.Count > 0
-                                ? (byte**) Marshal.UnsafeAddrOfPinnedArrayElement(extensionsToUseAnsi, 0).ToPointer()
-                                : (byte**) 0,
-                            EnabledLayerCount = (uint) layersToUse.Count,
-                            PpEnabledLayerNames = layersToUse.Count > 0
-                                ? (byte**) Marshal.UnsafeAddrOfPinnedArrayElement(layersToUseAnsi, 0).ToPointer()
-                                : (byte**) 0,
-                        };
-
-                        Handle = PhysicalDevice.Handle.CreateDevice(&deviceCreateInfo,
-                            Instance.AllocationCallbacks);
+                            var block = kv.Value.ToArray();
+                            pins.Add(GCHandle.Alloc(block, GCHandleType.Pinned));
+                            queueCreateInfo[family++] = new VkDeviceQueueCreateInfo()
+                            {
+                                SType = VkStructureType.DeviceQueueCreateInfo,
+                                Flags = 0,
+                                PNext = (void*) 0,
+                                QueueFamilyIndex = kv.Key,
+                                QueueCount = (uint) block.Length,
+                                PQueuePriorities = (float*) Marshal.UnsafeAddrOfPinnedArrayElement(block, 0).ToPointer()
+                            };
+                        }
                     }
                 }
-                finally
+
+                unsafe
                 {
-                    foreach (var ptr in layersToUseAnsi)
-                        Marshal.FreeHGlobal(ptr);
-                    foreach (var ptr in extensionsToUseAnsi)
-                        Marshal.FreeHGlobal(ptr);
+                    var layersToUseAnsi = new IntPtr[layersToUse.Count];
+                    for (var i = 0; i < layersToUse.Count; i++)
+                        layersToUseAnsi[i] = Marshal.StringToHGlobalAnsi(layersToUse[i]);
+                    var extensionsToUseAnsi = new IntPtr[extensionsToUse.Count];
+                    for (var i = 0; i < extensionsToUse.Count; i++)
+                        extensionsToUseAnsi[i] = Marshal.StringToHGlobalAnsi(extensionsToUse[i]);
+
+                    var pinnedLayersToUse = GCHandle.Alloc(layersToUseAnsi, GCHandleType.Pinned);
+                    var pinnedExtensionsToUse = GCHandle.Alloc(extensionsToUseAnsi, GCHandleType.Pinned);
+                    try
+                    {
+                        fixed (VkDeviceQueueCreateInfo* queueOptionsPtr = queueCreateInfo)
+                        {
+                            var desiredFeatures = ChooseDeviceFeatures();
+                            var deviceCreateInfo = new VkDeviceCreateInfo()
+                            {
+                                SType = VkStructureType.DeviceCreateInfo,
+                                QueueCreateInfoCount = (uint) queueOptions.Length,
+                                PQueueCreateInfos = queueOptionsPtr,
+                                PEnabledFeatures = &desiredFeatures,
+                                EnabledExtensionCount = (uint) extensionsToUse.Count,
+                                PpEnabledExtensionNames = extensionsToUse.Count > 0
+                                    ? (byte**) Marshal.UnsafeAddrOfPinnedArrayElement(extensionsToUseAnsi, 0)
+                                        .ToPointer()
+                                    : (byte**) 0,
+                                EnabledLayerCount = (uint) layersToUse.Count,
+                                PpEnabledLayerNames = layersToUse.Count > 0
+                                    ? (byte**) Marshal.UnsafeAddrOfPinnedArrayElement(layersToUseAnsi, 0).ToPointer()
+                                    : (byte**) 0,
+                            };
+
+                            Handle = PhysicalDevice.Handle.CreateDevice(&deviceCreateInfo,
+                                Instance.AllocationCallbacks);
+                        }
+                    }
+                    finally
+                    {
+                        foreach (var ptr in layersToUseAnsi)
+                            Marshal.FreeHGlobal(ptr);
+                        foreach (var ptr in extensionsToUseAnsi)
+                            Marshal.FreeHGlobal(ptr);
+                    }
                 }
+            }
+            finally
+            {
+                foreach (var pin in pins)
+                    pin.Free();
+                pins.Clear();
             }
 
             _queues = new Queue[queueOptions.Length][];
             var queuesAll = new List<Queue>();
             for (var i = 0; i < queueOptions.Length; i++)
             {
-                _queues[i] = new Queue[queueOptions[i].QueueCount];
+                _queues[i] = new Queue[queueOptions[i].Priorities.Count];
                 for (var j = 0; j < _queues[i].Length; j++)
-                    queuesAll.Add(_queues[i][j] = new Queue(this, queueOptions[i].QueueFamilyIndex, (uint) j));
+                    queuesAll.Add(_queues[i][j] =
+                        new Queue(this, queueOptions[i].Family, (uint) (queueOptionsRedirect[i] + j)));
             }
             Queues = queuesAll;
 
