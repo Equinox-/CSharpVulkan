@@ -35,6 +35,28 @@ namespace VulkanLibrary.Managed.Handles
             }
         }
 
+        public CommandBufferRecorder DynamicViewport(uint firstViewport, params VkViewport[] viewports)
+        {
+            unsafe
+            {
+                fixed (VkViewport* viewport = viewports)
+                    VkCommandBuffer.vkCmdSetViewport(Handle, firstViewport, (uint) viewports.Length,
+                        viewport);
+            }
+            return this;
+        }
+
+        public CommandBufferRecorder DynamicScissors(uint firstScissor, params VkRect2D[] scissors)
+        {
+            unsafe
+            {
+                fixed (VkRect2D* scissor = scissors)
+                    VkCommandBuffer.vkCmdSetScissor(Handle, firstScissor, (uint) scissors.Length,
+                        scissor);
+            }
+            return this;
+        }
+
         public CommandBufferRecorder BeginRenderPass(RenderPass pass, Framebuffer framebuffer,
             VkClearValue[] clearValues,
             VkSubpassContents subpass,
@@ -44,7 +66,7 @@ namespace VulkanLibrary.Managed.Handles
             pass.AssertValid();
             unsafe
             {
-                fixed(VkClearValue* clearPtr = clearValues)
+                fixed (VkClearValue* clearPtr = clearValues)
                 {
                     var info = new VkRenderPassBeginInfo()
                     {
@@ -98,7 +120,7 @@ namespace VulkanLibrary.Managed.Handles
         /// <param name="pBuffers">is a pointer to an array of buffer handles.</param>
         /// <param name="pOffsets">is a pointer to an array of buffer offsets.</param>
         /// <returns>this</returns>
-        public  CommandBufferRecorder BindVertexBuffers(uint firstBinding, Buffer[] pBuffers, ulong[] pOffsets = null)
+        public CommandBufferRecorder BindVertexBuffers(uint firstBinding, Buffer[] pBuffers, ulong[] pOffsets = null)
         {
             Handle.BindVertexBuffers(firstBinding, pBuffers.Select(x =>
             {

@@ -351,9 +351,9 @@ namespace VulkanLibrary.Managed.Handles
             return this;
         }
 
-        public GraphicsPipelineBuilder<TAttachment> DynamicState(VkDynamicState state)
+        public GraphicsPipelineBuilder<TAttachment> DynamicState(params VkDynamicState[] states)
         {
-            _dynamicStates.Add(state);
+            _dynamicStates.AddRange(states);
             return this;
         }
 
