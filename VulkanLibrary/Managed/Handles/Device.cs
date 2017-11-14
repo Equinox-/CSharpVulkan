@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using VulkanLibrary.Managed.Buffers.Pool;
 using VulkanLibrary.Managed.Memory.Pool;
 using VulkanLibrary.Unmanaged;
 
@@ -16,7 +17,12 @@ namespace VulkanLibrary.Managed.Handles
         /// <summary>
         /// Pooled memory allocator
         /// </summary>
-        public readonly VulkanMemoryPools MemoryPool;
+        public readonly DeviceMemoryPools MemoryPool;
+
+        /// <summary>
+        /// Pooled buffer allocator
+        /// </summary>
+        public readonly BufferPools BufferPools;
 
         /// <summary>
         /// Gets the queue with the given group and id.
@@ -198,7 +204,8 @@ namespace VulkanLibrary.Managed.Handles
             }
             Queues = queuesAll;
 
-            MemoryPool = new VulkanMemoryPools(this);
+            MemoryPool = new DeviceMemoryPools(this);
+            BufferPools = new BufferPools(this);
         }
 
         /// <summary>

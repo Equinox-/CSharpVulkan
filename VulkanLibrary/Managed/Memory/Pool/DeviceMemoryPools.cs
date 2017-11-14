@@ -8,15 +8,15 @@ using VulkanLibrary.Managed.Utilities;
 
 namespace VulkanLibrary.Managed.Memory.Pool
 {
-    public class VulkanMemoryPools : IDeviceOwned
+    public class DeviceMemoryPools : IDeviceOwned
     {
         /// <summary>
         /// Pool identity
         /// </summary>
         public enum Pool : uint
         {
-            SmallMappedBufferPool = 0,
-            LargeMappedBufferPool,
+            SmallBufferPool = 0,
+            LargeBufferPool,
             TexturePool,
             Count
         }
@@ -27,9 +27,9 @@ namespace VulkanLibrary.Managed.Memory.Pool
         {
             switch (p)
             {
-                case Pool.SmallMappedBufferPool:
+                case Pool.SmallBufferPool:
                     return 1024;
-                case Pool.LargeMappedBufferPool:
+                case Pool.LargeBufferPool:
                     return 1024 * 1024;
                 case Pool.TexturePool:
                     // Blocks big enough to store one texture channel
@@ -49,21 +49,21 @@ namespace VulkanLibrary.Managed.Memory.Pool
         /// <inheritdoc cref="IDeviceOwned.Device"/>
         public Device Device { get; }
 
-        private readonly List<VulkanMemoryPool>[,] _poolsByType;
+        private readonly List<DeviceMemoryPool>[,] _poolsByType;
 
-        public VulkanMemoryPools(Device dev)
+        public DeviceMemoryPools(Device dev)
         {
             Device = dev;
 
-            _poolsByType = new List<VulkanMemoryPool>[dev.PhysicalDevice.MemoryTypes.Count, (int) Pool.Count];
+            _poolsByType = new List<DeviceMemoryPool>[dev.PhysicalDevice.MemoryTypes.Count, (int) Pool.Count];
         }
 
-        private List<VulkanMemoryPool> PoolForType(MemoryType type, Pool poolType)
+        private List<DeviceMemoryPool> PoolForType(MemoryType type, Pool poolType)
         {
             var cval = _poolsByType[(int) type.TypeIndex, (int) poolType];
             if (cval != null)
                 return cval;
-            return _poolsByType[(int) type.TypeIndex, (int) poolType] = new List<VulkanMemoryPool>();
+            return _poolsByType[(int) type.TypeIndex, (int) poolType] = new List<DeviceMemoryPool>();
         }
 
         /// <summary>
@@ -73,13 +73,13 @@ namespace VulkanLibrary.Managed.Memory.Pool
         public string DumpStatistics()
         {
             var sb = new StringBuilder();
-            for (var type = 0; type < _poolsByType.Length; type++)
-                foreach (var poolType in (Pool[]) Enum.GetValues(typeof(Pool)))
+            for (var type = 0; type < _poolsByType.GetLength(0); type++)
+                for (var poolType = 0; poolType <_poolsByType.GetLength(1); poolType++)
                 {
-                    var pools = _poolsByType[type, (int) poolType];
+                    var pools = _poolsByType[type, poolType];
                     if (pools == null || pools.Count == 0)
                         continue;
-                    sb.AppendLine($"Memory type {0}, Pool type {poolType}");
+                    sb.AppendLine($"Memory type {0}, Pool type {(Pool) poolType}");
                     foreach (var pool in pools)
                         sb.AppendLine(
                             $" - {pool.FreeSpace}/{pool.Capacity}\t({100 * (double) pool.FreeSpace / pool.Capacity:F2} % free");
@@ -113,7 +113,7 @@ namespace VulkanLibrary.Managed.Memory.Pool
             var blockCount = PoolBlockCount;
             var blockSize = BlockSizeForPool(poolType);
             blockCount = System.Math.Max((ulong) System.Math.Ceiling(size / (double) blockSize) * 4UL, blockCount);
-            var npool = new VulkanMemoryPool(Device, blockSize, type.TypeIndex, blockCount, type.HostVisible);
+            var npool = new DeviceMemoryPool(Device, blockSize, type.TypeIndex, blockCount, type.HostVisible);
             pools.Add(npool);
             return new MemoryHandle(npool, npool.Allocate(size));
         }
@@ -133,10 +133,10 @@ namespace VulkanLibrary.Managed.Memory.Pool
         /// <inheritdoc cref="IPooledMappedMemory"/>
         public struct MemoryHandle : IPooledMappedMemory, IDisposable
         {
-            private readonly VulkanMemoryPool _pool;
-            private VulkanMemoryPool.MemoryHandle _handle;
+            private readonly DeviceMemoryPool _pool;
+            private DeviceMemoryPool.MemoryHandle _handle;
 
-            internal MemoryHandle(VulkanMemoryPool pool, VulkanMemoryPool.MemoryHandle handle)
+            internal MemoryHandle(DeviceMemoryPool pool, DeviceMemoryPool.MemoryHandle handle)
             {
                 _handle = handle;
                 _pool = pool;
@@ -172,7 +172,7 @@ namespace VulkanLibrary.Managed.Memory.Pool
             }
 
             /// <summary>
-            /// Utility method for <see cref="VulkanMemoryPools.Free"/>
+            /// Utility method for <see cref="DeviceMemoryPool.Free"/>
             /// </summary>
             /// <inheritdoc/>
             public void Dispose()

@@ -22,7 +22,7 @@ namespace VulkanLibrary.Managed.Handles
 
         public readonly MemoryType MemoryType;
 
-        internal DeviceMemory(Device device, MemoryRequirements requirements)
+        public DeviceMemory(Device device, MemoryRequirements requirements)
         {
             Device = device;
             MemoryType = requirements.FindMemoryType(PhysicalDevice);

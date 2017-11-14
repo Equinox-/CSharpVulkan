@@ -119,14 +119,16 @@ namespace VulkanLibrary.Managed.Handles
             }
 
             /// <inheritdoc/>
-            public SubpassBuilder ColorAttachment(uint attachment, VkImageLayout layout)
+            public SubpassBuilder ColorAttachment(uint attachment, 
+                VkImageLayout layout = VkImageLayout.ColorAttachmentOptimal)
             {
                 _colorAttachmentReferences.Add(new VkAttachmentReference() {Attachment = attachment, Layout = layout});
                 return this;
             }
 
             /// <inheritdoc/>
-            public SubpassBuilder DepthStencilAttachment(uint attachment, VkImageLayout layout)
+            public SubpassBuilder DepthStencilAttachment(uint attachment, 
+                VkImageLayout layout = VkImageLayout.DepthStencilAttachmentOptimal)
             {
                 Debug.Assert(!_depthStencilAttachment.HasValue);
                 _depthStencilAttachment = new VkAttachmentReference() {Attachment = attachment, Layout = layout};

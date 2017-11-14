@@ -156,6 +156,16 @@ namespace VulkanLibrary.Managed.Handles
             {
                 return SrcStage(src).DstStage(dst);
             }
+
+            /// <summary>
+            /// A full dependence, where every part of <c>dst</c> depends on <c>src</c>
+            /// </summary>
+            /// <returns>this</returns>
+            public TBuilder Full()
+            {
+                return Stage(VkPipelineStageFlag.AllCommands, VkPipelineStageFlag.AllCommands)
+                    .Access(VkAccessFlag.AllExceptExt, VkAccessFlag.AllExceptExt);
+            }
         }
 
         public class AttachmentBuilderBase<TBuilder> where TBuilder : AttachmentBuilderBase<TBuilder>

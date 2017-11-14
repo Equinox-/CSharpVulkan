@@ -14,7 +14,7 @@ namespace VulkanLibrary.Managed.Images
         /// <summary>
         /// Gets the memory handle this 
         /// </summary>
-        public VulkanMemoryPools.MemoryHandle Memory { get; private set; }
+        public DeviceMemoryPools.MemoryHandle Memory { get; private set; }
 
         public ImagePooled(Device dev, VkFormat format, VkImageType type, VkExtent3D size, uint mipLevels,
             uint arrayLayers, VkImageTiling tiling, VkSampleCountFlag samples, VkImageUsageFlag usage,
@@ -24,7 +24,7 @@ namespace VulkanLibrary.Managed.Images
         {
             var memReq = MemoryRequirements;
             var memType = memReq.FindMemoryType(dev.PhysicalDevice);
-            Memory = dev.MemoryPool.Allocate(memType, VulkanMemoryPools.Pool.TexturePool, memReq.TypeRequirements.Size);
+            Memory = dev.MemoryPool.Allocate(memType, DeviceMemoryPools.Pool.TexturePool, memReq.TypeRequirements.Size);
             BindMemory(Memory.BackingMemory, Memory.Offset);
         }
 
@@ -40,7 +40,7 @@ namespace VulkanLibrary.Managed.Images
         {
             base.Free();
             Memory.Free();
-            Memory = default(VulkanMemoryPools.MemoryHandle);
+            Memory = default(DeviceMemoryPools.MemoryHandle);
         }
     }
 }

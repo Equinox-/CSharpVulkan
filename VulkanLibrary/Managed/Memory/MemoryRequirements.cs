@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics.Contracts;
 using System.Runtime.CompilerServices;
 using VulkanLibrary.Managed.Handles;
@@ -133,6 +134,29 @@ namespace VulkanLibrary.Managed.Memory
         /// </summary>
         public MemoryRequirementFiltered<IDedicatedMemoryOwner> DedicatedMemory;
 
+        /// <summary>
+        /// Returns the union of these requirements
+        /// </summary>
+        /// <param name="a"></param>
+        /// <param name="b"></param>
+        /// <returns></returns>
+        public static MemoryRequirements Union(MemoryRequirements a, MemoryRequirements b)
+        {
+            return new MemoryRequirements()
+            {
+                TypeRequirements = new VkMemoryRequirements()
+                {
+                    MemoryTypeBits = a.TypeRequirements.MemoryTypeBits & b.TypeRequirements.MemoryTypeBits,
+                    Alignment = Math.Max(a.TypeRequirements.Alignment, b.TypeRequirements.Alignment),
+                    Size = Math.Max(a.TypeRequirements.Size, b.TypeRequirements.Size)
+                },
+                PreferredFlags = a.PreferredFlags | b.PreferredFlags,
+                RequiredFlags = a.RequiredFlags | b.RequiredFlags,
+                DedicatedMemory = a.DedicatedMemory.RequirementLevel > b.DedicatedMemory.RequirementLevel
+                    ? a.DedicatedMemory
+                    : b.DedicatedMemory
+            };
+        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static MemoryType FindMemoryTypeWithFlags(MemoryRequirements req, VkMemoryPropertyFlag desiredFlags,

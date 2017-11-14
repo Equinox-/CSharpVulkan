@@ -6,7 +6,7 @@ using VulkanLibrary.Managed.Utilities;
 
 namespace VulkanLibrary.Managed.Memory.Pool
 {
-    public class VulkanMemoryPool : IDeviceOwned, IDisposable
+    public class DeviceMemoryPool : IDeviceOwned, IDisposable
     {
         /// <inheritdoc cref="IInstanceOwned.Instance"/>
         public Instance Instance => Device.Instance;
@@ -44,7 +44,7 @@ namespace VulkanLibrary.Managed.Memory.Pool
         /// <param name="memoryType">Memory type</param>
         /// <param name="blockCount">Number of blocks to allocate</param>
         /// <param name="mapped">Provide mapped memory</param>
-        public VulkanMemoryPool(Device dev, ulong blockSize, uint memoryType, ulong blockCount, bool mapped)
+        public DeviceMemoryPool(Device dev, ulong blockSize, uint memoryType, ulong blockCount, bool mapped)
         {
             Device = dev;
             var bitAlignment = (uint) System.Math.Ceiling(System.Math.Log(blockSize) / System.Math.Log(2));
@@ -87,7 +87,7 @@ namespace VulkanLibrary.Managed.Memory.Pool
             /// <inheritdoc cref="IPooledMappedMemory.MappedMemory"/>
             public IMappedMemory MappedMemory { get; }
 
-            internal MemoryHandle(VulkanMemoryPool pool, MemoryPool.Memory handle)
+            internal MemoryHandle(DeviceMemoryPool pool, MemoryPool.Memory handle)
             {
                 _handle = handle;
                 BackingMemory = pool._memory;
@@ -106,7 +106,7 @@ namespace VulkanLibrary.Managed.Memory.Pool
                 [MethodImpl(MethodImplOptions.AggressiveInlining)] get { return _handle.Offset; }
             }
 
-            internal void FreeFor(VulkanMemoryPool pool)
+            internal void FreeFor(DeviceMemoryPool pool)
             {
                 pool._pool.Free(_handle);
                 MappedMemory.Dispose();

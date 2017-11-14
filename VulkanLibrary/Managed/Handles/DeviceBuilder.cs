@@ -10,10 +10,10 @@ namespace VulkanLibrary.Managed.Handles
 {
     public class DeviceBuilder
     {
-        private readonly List<VkExtension> _preferredExtensions = new List<VkExtension>();
-        private readonly List<VkExtension> _requiredExtensions = new List<VkExtension>();
-        private readonly List<string> _preferredLayers = new List<string>();
-        private readonly List<string> _requiredLayers = new List<string>();
+        private readonly HashSet<VkExtension> _preferredExtensions = new HashSet<VkExtension>();
+        private readonly HashSet<VkExtension> _requiredExtensions = new HashSet<VkExtension>();
+        private readonly HashSet<string> _preferredLayers = new HashSet<string>();
+        private readonly HashSet<string> _requiredLayers = new HashSet<string>();
         private readonly List<Device.QueueCreateInfo> _queueInfo = new List<Device.QueueCreateInfo>();
         private readonly PhysicalDevice _physicalDevice;
 
@@ -24,25 +24,57 @@ namespace VulkanLibrary.Managed.Handles
 
         public DeviceBuilder RequireExtensions(params VkExtension[] ext)
         {
-            _requiredExtensions.AddRange(ext);
+            foreach (var i in ext)
+                _requiredExtensions.Add(i);
             return this;
         }
 
         public DeviceBuilder RequireLayers(params string[] ext)
         {
-            _requiredLayers.AddRange(ext);
+            foreach (var i in ext)
+                _requiredLayers.Add(i);
             return this;
         }
 
         public DeviceBuilder PreferExtensions(params VkExtension[] ext)
         {
-            _preferredExtensions.AddRange(ext);
+            foreach (var i in ext)
+                _preferredExtensions.Add(i);
             return this;
         }
 
         public DeviceBuilder PreferLayers(params string[] ext)
         {
-            _preferredLayers.AddRange(ext);
+            foreach (var i in ext)
+                _preferredLayers.Add(i);
+            return this;
+        }
+
+        public DeviceBuilder RequireExtensions(IEnumerable<VkExtension> ext)
+        {
+            foreach (var i in ext)
+                _requiredExtensions.Add(i);
+            return this;
+        }
+
+        public DeviceBuilder RequireLayers(IEnumerable<string> ext)
+        {
+            foreach (var i in ext)
+                _requiredLayers.Add(i);
+            return this;
+        }
+
+        public DeviceBuilder PreferExtensions(IEnumerable<VkExtension> ext)
+        {
+            foreach (var i in ext)
+                _preferredExtensions.Add(i);
+            return this;
+        }
+
+        public DeviceBuilder PreferLayers(IEnumerable<string> ext)
+        {
+            foreach (var i in ext)
+                _preferredLayers.Add(i);
             return this;
         }
 
@@ -61,6 +93,7 @@ namespace VulkanLibrary.Managed.Handles
             _queueInfo.Add(new Device.QueueCreateInfo(family, priorities));
             return this;
         }
+
         /// <summary>
         /// Builds the device described by this builder.
         /// </summary>

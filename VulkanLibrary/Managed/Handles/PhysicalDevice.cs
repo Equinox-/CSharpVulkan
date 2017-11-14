@@ -114,18 +114,62 @@ namespace VulkanLibrary.Managed.Handles
             Func<PhysicalDevice, uint, bool> preferredPred = null,
             Func<PhysicalDevice, uint, bool> requiredPred = null)
         {
+            uint BitDelta(VkQueueFlag a, VkQueueFlag b)
+            {
+                var score = 0u;
+                for (uint j = 1; j < Math.Max((uint) a, (uint) b); j <<= 1)
+                {
+                    var flag = (VkQueueFlag) j;
+                    if ((a & flag) != (b & flag))
+                        score++;
+                }
+                return score;
+            }
+            
             var queues = Handle.GetQueueFamilyProperties();
             var both = preferredFlags | requiredFlags;
+            uint bestQueue = uint.MaxValue;
+            uint bestScore = uint.MaxValue;
             for (var i = 0; i < queues.Length; i++)
                 if ((queues[i].QueueFlags & both) == both
                     && (preferredPred == null || preferredPred.Invoke(this, (uint) i))
                     && (requiredPred == null || requiredPred.Invoke(this, (uint) i)))
-                    return (uint) i;
+                {
+                    var score = BitDelta(queues[i].QueueFlags, both);
+                    if (score >= bestScore) continue;
+                    bestQueue = (uint) i;
+                    bestScore = score;
+                }
+            if (bestQueue != uint.MaxValue)
+                return bestQueue;
             for (var i = 0; i < queues.Length; i++)
                 if ((queues[i].QueueFlags & requiredFlags) == requiredFlags
                     && (requiredPred == null || requiredPred.Invoke(this, (uint) i)))
-                    return (uint) i;
+                {
+                    var score = BitDelta(queues[i].QueueFlags, requiredFlags);
+                    if (score >= bestScore) continue;
+                    bestQueue = (uint) i;
+                    bestScore = score;
+                }
+            if (bestQueue != uint.MaxValue)
+                return bestQueue;
             throw new NotSupportedException($"Queue family with flags {requiredFlags} isn't supported");
+        }
+
+
+        /// <summary>
+        /// Finds all queue families with the given options
+        /// </summary>
+        /// <param name="flags">Require these options</param>
+        /// <param name="pred">Predicate that is required to be true, or null to ignore</param>
+        /// <returns>the queue family indices</returns>
+        public IEnumerable<uint> FindQueueFamilies(VkQueueFlag flags, Func<PhysicalDevice, uint, bool> pred = null)
+        {
+            var queues = Handle.GetQueueFamilyProperties();
+            for (var i = 0; i < queues.Length; i++)
+                if ((queues[i].QueueFlags & flags) == flags
+                    && (pred == null || pred.Invoke(this, (uint) i)))
+                    yield return (uint) i;
         }
     }
 }

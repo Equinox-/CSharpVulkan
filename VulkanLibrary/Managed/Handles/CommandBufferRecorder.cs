@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -7,11 +8,11 @@ using VulkanLibrary.Unmanaged.Handles;
 
 namespace VulkanLibrary.Managed.Handles
 {
-    public class CommandBufferRecorder
+    public class CommandBufferRecorder<T> where T : CommandBuffer
     {
-        private readonly CommandBuffer _buffer;
+        private readonly T _buffer;
 
-        internal CommandBufferRecorder(CommandBuffer buffer)
+        internal CommandBufferRecorder(T buffer)
         {
             _buffer = buffer;
         }
@@ -35,7 +36,7 @@ namespace VulkanLibrary.Managed.Handles
             }
         }
 
-        public CommandBufferRecorder DynamicViewport(uint firstViewport, params VkViewport[] viewports)
+        public CommandBufferRecorder<T> DynamicViewport(uint firstViewport, params VkViewport[] viewports)
         {
             unsafe
             {
@@ -46,7 +47,7 @@ namespace VulkanLibrary.Managed.Handles
             return this;
         }
 
-        public CommandBufferRecorder DynamicScissors(uint firstScissor, params VkRect2D[] scissors)
+        public CommandBufferRecorder<T> DynamicScissors(uint firstScissor, params VkRect2D[] scissors)
         {
             unsafe
             {
@@ -57,7 +58,88 @@ namespace VulkanLibrary.Managed.Handles
             return this;
         }
 
-        public CommandBufferRecorder BeginRenderPass(RenderPass pass, Framebuffer framebuffer,
+        /// <summary>
+        /// To copy data between buffer objects, call:
+        /// </summary>
+        /// <param name="src">is the source buffer.</param>
+        /// <param name="dest">is the destination buffer.</param>
+        /// <param name="region">is a pointer to an array of <see cref="VkBufferCopy"/> structures specifying the regions to copy.</param>
+        public CommandBufferRecorder<T> CopyBuffer(Buffer src, Buffer dest, VkBufferCopy region)
+        {
+            unsafe
+            {
+                VkCommandBuffer.vkCmdCopyBuffer(Handle, src.Handle, dest.Handle, 1, &region);
+            }
+            return this;
+        }
+
+        /// <summary>
+        /// To copy data between buffer objects, call:
+        /// </summary>
+        /// <param name="src">is the source buffer.</param>
+        /// <param name="dest">is the destination buffer.</param>
+        /// <param name="region">is a pointer to an array of <see cref="VkBufferCopy"/> structures specifying the regions to copy.</param>
+        public CommandBufferRecorder<T> CopyBuffer(Buffer src, Buffer dest, VkBufferCopy[] region)
+        {
+            Handle.CopyBuffer(src.Handle, dest.Handle, region);
+            return this;
+        }
+
+        /// <summary>
+        /// To record a pipeline barrier, call:
+        /// </summary>
+        /// <param name="srcStageMask">is a bitmask of <c>VkPipelineStageFlagBits</c> specifying the <a href='https://www.khronos.org/registry/vulkan/specs/1.0/html/vkspec.html#synchronization-pipeline-stages-masks'> source stage mask</a>.</param>
+        /// <param name="dstStageMask">is a bitmask of <c>VkPipelineStageFlagBits</c> specifying the <a href='https://www.khronos.org/registry/vulkan/specs/1.0/html/vkspec.html#synchronization-pipeline-stages-masks'> destination stage mask</a>.</param>
+        /// <param name="dependencyFlags">is a bitmask of <c>VkDependencyFlagBits</c> specifying how execution and memory dependencies are formed.</param>
+        /// <param name="barrier">is a pointer to an array of <see cref="VkMemoryBarrier"/> structures.</param>
+        /// <param name="bufferBarrier">is a pointer to an array of <see cref="VkBufferMemoryBarrier"/> structures.</param>
+        /// <param name="imageBarrier">is a pointer to an array of <see cref="VkImageMemoryBarrier"/> structures.</param>
+        public CommandBufferRecorder<T> PipelineBarrier(VkPipelineStageFlag srcStageMask,
+            VkPipelineStageFlag dstStageMask,
+            VkDependencyFlag dependencyFlags, VkMemoryBarrier[] barrier,
+            VkBufferMemoryBarrier[] bufferBarrier,
+            VkImageMemoryBarrier[] imageBarrier)
+        {
+            Handle.PipelineBarrier(srcStageMask, dstStageMask, dependencyFlags, barrier, bufferBarrier, imageBarrier);
+            return this;
+        }
+
+        /// <summary>
+        /// To record a pipeline barrier, call:
+        /// </summary>
+        /// <param name="srcStageMask">is a bitmask of <c>VkPipelineStageFlagBits</c> specifying the <a href='https://www.khronos.org/registry/vulkan/specs/1.0/html/vkspec.html#synchronization-pipeline-stages-masks'> source stage mask</a>.</param>
+        /// <param name="dstStageMask">is a bitmask of <c>VkPipelineStageFlagBits</c> specifying the <a href='https://www.khronos.org/registry/vulkan/specs/1.0/html/vkspec.html#synchronization-pipeline-stages-masks'> destination stage mask</a>.</param>
+        /// <param name="dependencyFlags">is a bitmask of <c>VkDependencyFlagBits</c> specifying how execution and memory dependencies are formed.</param>
+        /// <param name="barrier">is a pointer to an array of <see cref="VkMemoryBarrier"/> structures.</param>
+        /// <param name="bufferBarrier">is a pointer to an array of <see cref="VkBufferMemoryBarrier"/> structures.</param>
+        /// <param name="imageBarrier">is a pointer to an array of <see cref="VkImageMemoryBarrier"/> structures.</param>
+        public CommandBufferRecorder<T> PipelineBarrier(VkPipelineStageFlag srcStageMask,
+            VkPipelineStageFlag dstStageMask,
+            VkDependencyFlag dependencyFlags, VkMemoryBarrier barrier = default(VkMemoryBarrier),
+            VkBufferMemoryBarrier bufferBarrier = default(VkBufferMemoryBarrier),
+            VkImageMemoryBarrier imageBarrier = default(VkImageMemoryBarrier))
+        {
+            unsafe
+            {
+                VkCommandBuffer.vkCmdPipelineBarrier(Handle, srcStageMask, dstStageMask, dependencyFlags,
+                    barrier.SType != VkStructureType.BufferMemoryBarrier ? 0 : 1u, &barrier,
+                    bufferBarrier.SType != VkStructureType.BufferMemoryBarrier ? 0 : 1u, &bufferBarrier,
+                    imageBarrier.SType != VkStructureType.ImageMemoryBarrier ? 0 : 1u, &imageBarrier);
+            }
+            return this;
+        }
+
+        /// <summary>
+        /// To transition to the next subpass in the render pass instance after recording the commands for a subpass, call:
+        /// </summary>
+        /// <param name="contents">specifies how the commands in the next subpass will be provided, in the same fashion as the corresponding parameter of <see cref="VkCommandBuffer.vkCmdBeginRenderPass"/>.</param>
+        public CommandBufferRecorder<T> NextSubpass(VkSubpassContents contents)
+        {
+            Handle.NextSubpass(contents);
+            return this;
+        }
+
+        public CommandBufferRecorder<T> BeginRenderPass(RenderPass pass, Framebuffer framebuffer,
             VkClearValue[] clearValues,
             VkSubpassContents subpass,
             VkRect2D? renderArea = null)
@@ -88,7 +170,7 @@ namespace VulkanLibrary.Managed.Handles
             return this;
         }
 
-        public CommandBufferRecorder BindPipeline(Pipeline pipeline)
+        public CommandBufferRecorder<T> BindPipeline(Pipeline pipeline)
         {
             pipeline.AssertValid();
             Handle.BindPipeline(pipeline.PipelineType, pipeline.Handle);
@@ -102,7 +184,7 @@ namespace VulkanLibrary.Managed.Handles
         /// <param name="buffer">buffer to bind</param>
         /// <param name="offset">offset into buffer</param>
         /// <returns>this</returns>
-        public CommandBufferRecorder BindVertexBuffer(uint binding, Buffer buffer, ulong offset = 0)
+        public CommandBufferRecorder<T> BindVertexBuffer(uint binding, Buffer buffer, ulong offset = 0)
         {
             buffer.AssertValid();
             var bh = buffer.Handle;
@@ -120,7 +202,7 @@ namespace VulkanLibrary.Managed.Handles
         /// <param name="pBuffers">is a pointer to an array of buffer handles.</param>
         /// <param name="pOffsets">is a pointer to an array of buffer offsets.</param>
         /// <returns>this</returns>
-        public CommandBufferRecorder BindVertexBuffers(uint firstBinding, Buffer[] pBuffers, ulong[] pOffsets = null)
+        public CommandBufferRecorder<T> BindVertexBuffers(uint firstBinding, Buffer[] pBuffers, ulong[] pOffsets = null)
         {
             Handle.BindVertexBuffers(firstBinding, pBuffers.Select(x =>
             {
@@ -137,7 +219,7 @@ namespace VulkanLibrary.Managed.Handles
         /// <param name="instanceCount">is the number of instances to draw.</param>
         /// <param name="firstVertex">is the index of the first vertex to draw.</param>
         /// <param name="firstInstance">is the instance ID of the first instance to draw.</param>
-        public CommandBufferRecorder Draw(uint vertexCount, uint instanceCount, uint firstVertex, uint firstInstance)
+        public CommandBufferRecorder<T> Draw(uint vertexCount, uint instanceCount, uint firstVertex, uint firstInstance)
         {
             Handle.Draw(vertexCount, instanceCount, firstVertex, firstInstance);
             return this;
@@ -151,7 +233,8 @@ namespace VulkanLibrary.Managed.Handles
         /// <param name="firstIndex">is the base index within the index buffer.</param>
         /// <param name="vertexOffset">is the value added to the vertex index before indexing into the vertex buffer.</param>
         /// <param name="firstInstance">is the instance ID of the first instance to draw.</param>
-        public CommandBufferRecorder DrawIndexed(uint indexCount, uint instanceCount, uint firstIndex, int vertexOffset,
+        public CommandBufferRecorder<T> DrawIndexed(uint indexCount, uint instanceCount, uint firstIndex,
+            int vertexOffset,
             uint firstInstance)
         {
             Handle.DrawIndexed(indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
@@ -165,7 +248,7 @@ namespace VulkanLibrary.Managed.Handles
         /// <param name="offset">is the byte offset into buffer where parameters begin.</param>
         /// <param name="drawCount">is the number of draws to execute, and can: be zero.</param>
         /// <param name="stride">is the byte stride between successive sets of draw parameters.</param>
-        public CommandBufferRecorder DrawIndirect(VkBuffer buffer, ulong offset, uint drawCount, uint stride)
+        public CommandBufferRecorder<T> DrawIndirect(VkBuffer buffer, ulong offset, uint drawCount, uint stride)
         {
             Handle.DrawIndirect(buffer, offset, drawCount, stride);
             return this;
@@ -178,19 +261,103 @@ namespace VulkanLibrary.Managed.Handles
         /// <param name="offset">is the byte offset into buffer where parameters begin.</param>
         /// <param name="drawCount">is the number of draws to execute, and can: be zero.</param>
         /// <param name="stride">is the byte stride between successive sets of draw parameters.</param>
-        public CommandBufferRecorder DrawIndexedIndirect(VkBuffer buffer, ulong offset, uint drawCount, uint stride)
+        public CommandBufferRecorder<T> DrawIndexedIndirect(VkBuffer buffer, ulong offset, uint drawCount, uint stride)
         {
             Handle.DrawIndexedIndirect(buffer, offset, drawCount, stride);
             return this;
         }
 
-        public CommandBufferRecorder EndRenderPass()
+        /// <summary>
+        /// Records the an image memory barrier
+        /// </summary>
+        /// <param name="img">image</param>
+        /// <param name="format">format</param>
+        /// <param name="old">old layout</param>
+        /// <param name="new">new layout</param>
+        /// <param name="range">resource range</param>
+        /// <param name="srcQueue">source queue</param>
+        /// <param name="dstQueue">destination queue</param>
+        /// <param name="flags">dependency flags</param>
+        /// <returns>this</returns>
+        public CommandBufferRecorder<T> ImageMemoryBarrier(VkImage img, VkFormat format, VkImageLayout old,
+            VkImageLayout @new, VkImageSubresourceRange range, VkDependencyFlag flags = 0, uint srcQueue = Vulkan.QueueFamilyIgnored,
+            uint dstQueue = Vulkan.QueueFamilyIgnored)
+        {
+            unsafe
+            {
+                var spec = new VkImageMemoryBarrier()
+                {
+                    SType = VkStructureType.ImageMemoryBarrier,
+                    PNext = (void*) 0,
+                    OldLayout = old,
+                    NewLayout = @new,
+                    SrcQueueFamilyIndex = srcQueue,
+                    DstQueueFamilyIndex = dstQueue,
+                    Image = img,
+                    SubresourceRange = range,
+                    SrcAccessMask = VkAccessFlag.None,
+                    DstAccessMask = VkAccessFlag.None
+                };
+                VkPipelineStageFlag srcFlag = VkPipelineStageFlag.None;
+                VkPipelineStageFlag dstFlag = VkPipelineStageFlag.None;
+                GetStageInfo(old, out srcFlag, out spec.SrcAccessMask);
+                GetStageInfo(@new, out dstFlag, out spec.DstAccessMask);
+                return PipelineBarrier(srcFlag, dstFlag, flags, default(VkMemoryBarrier),
+                    default(VkBufferMemoryBarrier), spec);
+            }
+        }
+
+        private static void GetStageInfo(VkImageLayout layout, out VkPipelineStageFlag pipelineStage,
+            out VkAccessFlag accessMask)
+        {
+            accessMask = VkAccessFlag.None;
+            pipelineStage = 0;
+            switch (layout)
+            {
+                case VkImageLayout.ColorAttachmentOptimal:
+                    pipelineStage = VkPipelineStageFlag.AllGraphics;
+                    accessMask |= VkAccessFlag.ColorAttachmentRead | VkAccessFlag.ColorAttachmentWrite;
+                    break;
+                case VkImageLayout.DepthStencilAttachmentOptimal:
+                case VkImageLayout.DepthReadOnlyStencilAttachmentOptimalKhr:
+                    pipelineStage = VkPipelineStageFlag.AllGraphics;
+                    accessMask |= VkAccessFlag.DepthStencilAttachmentRead | VkAccessFlag.DepthStencilAttachmentWrite;
+                    break;
+                case VkImageLayout.DepthStencilReadOnlyOptimal:
+                case VkImageLayout.DepthAttachmentStencilReadOnlyOptimalKhr:
+                    pipelineStage = VkPipelineStageFlag.AllGraphics;
+                    accessMask |= VkAccessFlag.DepthStencilAttachmentRead;
+                    break;
+                case VkImageLayout.ShaderReadOnlyOptimal:
+                    pipelineStage = VkPipelineStageFlag.AllGraphics;
+                    accessMask |= VkAccessFlag.ShaderRead;
+                    break;
+                case VkImageLayout.TransferSrcOptimal:
+                    pipelineStage = VkPipelineStageFlag.Transfer;
+                    accessMask |= VkAccessFlag.TransferRead;
+                    break;
+                case VkImageLayout.TransferDstOptimal:
+                    pipelineStage = VkPipelineStageFlag.Transfer;
+                    accessMask |= VkAccessFlag.TransferWrite;
+                    break;
+                case VkImageLayout.SharedPresentKhr:
+                case VkImageLayout.PresentSrcKhr:
+                case VkImageLayout.Preinitialized:
+                case VkImageLayout.Undefined:
+                case VkImageLayout.General:
+                    pipelineStage = VkPipelineStageFlag.AllCommands;
+                    accessMask |= VkAccessFlag.AllExceptExt;
+                    break;
+            }
+        }
+
+        public CommandBufferRecorder<T> EndRenderPass()
         {
             Handle.EndRenderPass();
             return this;
         }
 
-        public CommandBuffer Commit()
+        public T Commit()
         {
             _buffer.FinishBuild();
             return _buffer;

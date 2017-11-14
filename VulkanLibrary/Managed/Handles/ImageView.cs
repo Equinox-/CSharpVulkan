@@ -4,12 +4,13 @@ namespace VulkanLibrary.Managed.Handles
 {
     public partial class ImageView
     {
-        private readonly Image _image;
+        public Image Image { get; }
 
-        public ImageView(Image image, VkImageSubresourceRange range, VkImageViewType type, VkFormat? format = null, VkComponentMapping? swizzle = null)
+        public ImageView(Image image, VkImageSubresourceRange range, VkImageViewType type, VkFormat? format = null,
+            VkComponentMapping? swizzle = null)
         {
             Device = image.Device;
-            _image = image;
+            Image = image;
 
             unsafe
             {
@@ -17,7 +18,7 @@ namespace VulkanLibrary.Managed.Handles
                 {
                     SType = VkStructureType.ImageViewCreateInfo,
                     Flags = 0,
-                    PNext = (void*)0,
+                    PNext = (void*) 0,
                     Format = format ?? image.Format,
                     Components = swizzle ?? new VkComponentMapping()
                     {

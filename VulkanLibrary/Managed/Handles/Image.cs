@@ -89,9 +89,7 @@ namespace VulkanLibrary.Managed.Handles
 #endif
                 if (sharing == VkSharingMode.Concurrent)
                     Debug.Assert(sharedQueueFamily != null);
-                if (sharedQueueFamily == null)
-                    sharedQueueFamily = new uint[0];
-                fixed (uint* sharedPtr = &sharedQueueFamily[0])
+                fixed (uint* sharedPtr = sharedQueueFamily)
                 {
                     var info = new VkImageCreateInfo()
                     {
@@ -106,7 +104,9 @@ namespace VulkanLibrary.Managed.Handles
                         InitialLayout = layout,
                         PNext = (void*) 0,
                         PQueueFamilyIndices = sharedPtr,
-                        SharingMode = sharing
+                        SharingMode = sharing,
+                        Samples = samples,
+                        Usage = usage
                     };
                     Handle = Device.Handle.CreateImage(&info, Instance.AllocationCallbacks);
                 }
@@ -121,7 +121,7 @@ namespace VulkanLibrary.Managed.Handles
             Handle = handle;
         }
 
-        protected void BindMemory(DeviceMemory mem, ulong offset)
+        public void BindMemory(DeviceMemory mem, ulong offset)
         {
             Device.Handle.BindImageMemory(Handle, mem.Handle, offset);
         }

@@ -36,6 +36,7 @@ namespace VulkanLibrary.Managed.Utilities
                 return;
             }
             Free();
+            GC.SuppressFinalize(this);
             _disposed = (int) LifeState.Dead;
         }
 

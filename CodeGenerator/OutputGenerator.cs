@@ -976,7 +976,7 @@ namespace CodeGenerator
                             }
                             else
                             {
-                                writer.WriteLineIndent($"fixed ({declaration} = &{sanitaryName}[0]) {{");
+                                writer.WriteLineIndent($"fixed ({declaration} = {sanitaryName}) {{");
                                 writer.IncreaseIndent();
                                 indents++;
                             }
@@ -1800,6 +1800,35 @@ namespace CodeGenerator
                     writer.WriteLineIndent($"{newName} = {SubstituteConstantExpression(cst.Expression, true)},");
                 }
             }
+            if (write && @enum.IsBitmask)
+            {
+                if (!_constantLookupTable.ContainsValue(typeName + ".None"))
+                {
+                    writer.WriteLineIndent("/// <summary>");
+                    writer.WriteLineIndent("/// No bits");
+                    writer.WriteLineIndent("/// </summary>");
+                    writer.WriteLineIndent($"None = 0,");
+                }
+                if (@enum.Values.Any(x => x.Extension == null))
+                {
+                    writer.WriteLineIndent("/// <summary>");
+                    writer.WriteLineIndent("/// All bits, except extensions");
+                    writer.WriteLineIndent("/// </summary>");
+                    writer.WriteIndent();
+                    writer.Write("AllExceptExt = ");
+                    var first = true;
+                    foreach (var cst in @enum.Values)
+                    {
+                        if (cst.Extension != null)
+                            continue;
+                        if (!first)
+                            writer.Write(" | ");
+                        writer.Write(_constantLookupTable[cst].Substring(typeName.Length + 1));
+                        first = false;
+                    }
+                    writer.WriteLine();
+                }
+            }
             if (!write)
                 return;
             writer.DecreaseIndent();
@@ -1836,11 +1865,12 @@ namespace CodeGenerator
                 }
                 writer.DecreaseIndent();
                 writer.WriteLineIndent("}");
-                writer.WriteLineIndent("public static void Check(VkResult result) {");
+                writer.WriteLineIndent("public static VkResult Check(VkResult result) {");
                 writer.IncreaseIndent();
                 {
                     writer.WriteLineIndent("var except = Create(result);");
                     writer.WriteLineIndent("if (except != null) throw except;");
+                    writer.WriteLineIndent("return result;");
                     writer.DecreaseIndent();
                     writer.WriteLineIndent("}");
                 }

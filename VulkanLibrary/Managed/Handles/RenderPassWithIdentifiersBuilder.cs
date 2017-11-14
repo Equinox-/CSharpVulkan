@@ -146,7 +146,8 @@ namespace VulkanLibrary.Managed.Handles
             }
 
             /// <inheritdoc/>
-            public SubpassBuilder DepthStencilAttachment(TAttachment attachment, VkImageLayout layout)
+            public SubpassBuilder DepthStencilAttachment(TAttachment attachment,
+                VkImageLayout layout = VkImageLayout.DepthStencilAttachmentOptimal)
             {
                 Debug.Assert(!_depthStencilAttachment.HasValue);
                 _depthStencilAttachment = new LazyAttachmentReference() {Id = attachment, Layout = layout};
@@ -353,9 +354,12 @@ namespace VulkanLibrary.Managed.Handles
                     throw new Exception($"Circular dependency detected in {string.Join(", ", passInFactory)}.");
                 passOrder.AddRange(insert);
                 foreach (var k in insert)
-                foreach (var dep in _dependencyBuilders.Where(x =>
-                    !x.SrcExternal && !x.DstExternal && passComparer.Equals(x.SrcPass, k)))
-                    passInFactory[dep.DstPass]--;
+                {
+                    passInFactory.Remove(k);
+                    foreach (var dep in _dependencyBuilders.Where(x =>
+                        !x.SrcExternal && !x.DstExternal && passComparer.Equals(x.SrcPass, k)))
+                        passInFactory[dep.DstPass]--;
+                }
             }
             var attachmentToId = _attachmentOrder.Select((x, i) => new KeyValuePair<TAttachment, uint>(x, (uint) i))
                 .ToDictionary(a => a.Key, b => b.Value);
@@ -381,7 +385,7 @@ namespace VulkanLibrary.Managed.Handles
                     (a, b) => a.SrcSubpass != Vulkan.SubpassExternal
                         ? a.SrcSubpass.CompareTo(b.SrcSubpass)
                         : a.DstSubpass.CompareTo(b.DstSubpass));
-                
+
                 unsafe
                 {
                     fixed (VkAttachmentDescription* attachPtr = attachmentDesc)

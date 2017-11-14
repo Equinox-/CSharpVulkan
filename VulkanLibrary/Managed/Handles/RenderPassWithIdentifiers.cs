@@ -10,6 +10,10 @@ namespace VulkanLibrary.Managed.Handles
         private readonly Dictionary<TPass, uint> _passToId;
         private readonly TPass[] _idToPass;
 
+        public uint PassCount => (uint) _idToPass.Length;
+
+        public uint AttachmentCount => (uint) _idToAttachment.Length;
+
         public TPass Pass(uint id)
         {
             return _idToPass[id];

@@ -18,6 +18,14 @@ namespace VulkanLibrary.Managed.Handles
         /// </summary>
         public VkBufferUsageFlag Usage { get; }
         
+        /// <summary>
+        /// Creates a new buffer
+        /// </summary>
+        /// <param name="dev">device</param>
+        /// <param name="usage">buffer usage</param>
+        /// <param name="flags">buffer creation flags</param>
+        /// <param name="size">buffer size</param>
+        /// <param name="sharedQueueFamilies">Concurrency mode, or exclusive if empty</param>
         public Buffer(Device dev, VkBufferUsageFlag usage, VkBufferCreateFlag flags, ulong size,
             params uint[] sharedQueueFamilies)
         {

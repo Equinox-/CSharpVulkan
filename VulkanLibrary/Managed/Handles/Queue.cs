@@ -37,8 +37,9 @@ namespace VulkanLibrary.Managed.Handles
             Submit(buffer, wait?.Handle, waitStage, signal?.Handle, submit?.Handle);
         }
 
-        public void Submit(CommandBuffer buffer, VkSemaphore? wait, VkPipelineStageFlag waitStage, VkSemaphore? signal,
-            VkFence? submit)
+        public void Submit(CommandBuffer buffer, VkSemaphore? wait = null, VkPipelineStageFlag waitStage = 0,
+            VkSemaphore? signal = null,
+            VkFence? submit = null)
         {
             buffer.AssertBuilt();
             var buff = buffer.Handle;
@@ -59,7 +60,10 @@ namespace VulkanLibrary.Managed.Handles
                     PWaitSemaphores = &waitH,
                     PWaitDstStageMask = &waitStage,
                 };
-                VkException.Check(VkQueue.vkQueueSubmit(Handle, 1, &info, submitH));
+                if (buffer is CommandBufferPooledExclusiveUse peu)
+                    peu.DoSubmit(Handle, info);
+                else
+                    VkException.Check(VkQueue.vkQueueSubmit(Handle, 1, &info, submitH));
             }
         }
 
@@ -84,58 +88,52 @@ namespace VulkanLibrary.Managed.Handles
             {
                 // ReSharper disable once PossibleNullReferenceException
                 Debug.Assert((waitStages == null && wait == null) || waitStages.Length == wait.Length);
-
-                var pinWait = wait != null && wait.Length > 0
-                    ? GCHandle.Alloc(wait, GCHandleType.Pinned)
-                    : default(GCHandle);
-                var pinWaitStage =
-                    wait != null && wait.Length > 0
-                        ? GCHandle.Alloc(waitStages, GCHandleType.Pinned)
-                        : default(GCHandle);
-                var pinSignal = signal != null && signal.Length > 0 ? GCHandle.Alloc(signal) : default(GCHandle);
-
-                var arrayBuffers = buffers.Select(x =>
+                var arrayBuffers = buffers.Where(x => !(x is CommandBufferPooledExclusiveUse)).Select(x =>
                 {
                     x.AssertBuilt();
                     return x.Handle;
                 }).ToArray();
-                try
+                var pooledBuffers = buffers.OfType<CommandBufferPooledExclusiveUse>().ToArray();
+                Debug.Assert(pooledBuffers.Length == 0 || submit == VkFence.Null,
+                    "Can't use custom submit fence on pooled buffers");
+                fixed (VkSemaphore* waitPtr = wait)
+                fixed (VkPipelineStageFlag* waitStagePtr = waitStages)
+                fixed (VkSemaphore* signalPtr = signal)
                 {
-                    fixed (VkCommandBuffer* buffer = &arrayBuffers[0])
+                    if (arrayBuffers.Length > 0)
+                        fixed (VkCommandBuffer* buffer = arrayBuffers)
+                        {
+                            var info = new VkSubmitInfo()
+                            {
+                                SType = VkStructureType.SubmitInfo,
+                                PNext = (void*) 0,
+                                CommandBufferCount = (uint) arrayBuffers.Length,
+                                PCommandBuffers = buffer,
+                                SignalSemaphoreCount = (uint) (signal?.Length ?? 0),
+                                PSignalSemaphores = signalPtr,
+                                WaitSemaphoreCount = (uint) (wait?.Length ?? 0),
+                                PWaitSemaphores = waitPtr,
+                                PWaitDstStageMask = waitStagePtr,
+                            };
+                            VkException.Check(VkQueue.vkQueueSubmit(Handle, 1, &info, submit));
+                        }
+                    foreach (var pooled in pooledBuffers)
                     {
+                        var handle = pooled.Handle;
                         var info = new VkSubmitInfo()
                         {
                             SType = VkStructureType.SubmitInfo,
                             PNext = (void*) 0,
-                            CommandBufferCount = (uint) arrayBuffers.Length,
-                            PCommandBuffers = buffer,
+                            CommandBufferCount = 1,
+                            PCommandBuffers = &handle,
                             SignalSemaphoreCount = (uint) (signal?.Length ?? 0),
-                            PSignalSemaphores =
-                                (VkSemaphore*) (signal != null && signal.Length > 0
-                                    ? Marshal.UnsafeAddrOfPinnedArrayElement(signal, 0)
-                                    : IntPtr.Zero).ToPointer(),
+                            PSignalSemaphores = signalPtr,
                             WaitSemaphoreCount = (uint) (wait?.Length ?? 0),
-                            PWaitSemaphores =
-                                (VkSemaphore*) (wait != null && wait.Length > 0
-                                    ? Marshal.UnsafeAddrOfPinnedArrayElement(wait, 0)
-                                    : IntPtr.Zero).ToPointer(),
-                            PWaitDstStageMask =
-                                (VkPipelineStageFlag*) (wait != null && wait.Length > 0
-                                    ? Marshal.UnsafeAddrOfPinnedArrayElement(waitStages, 0)
-                                    : IntPtr.Zero).ToPointer(),
+                            PWaitSemaphores = waitPtr,
+                            PWaitDstStageMask = waitStagePtr,
                         };
-                        VkException.Check(VkQueue.vkQueueSubmit(Handle, 1, &info, submit));
+                        pooled.DoSubmit(Handle, info);
                     }
-                }
-                finally
-                {
-                    if (wait != null && wait.Length > 0)
-                    {
-                        pinWait.Free();
-                        pinWaitStage.Free();
-                    }
-                    if (signal != null && signal.Length > 0)
-                        pinSignal.Free();
                 }
             }
         }
@@ -156,10 +154,7 @@ namespace VulkanLibrary.Managed.Handles
             {
                 swapchain.AssertValid();
                 var swapHandle = swapchain.Handle;
-                var pinWait = waitSemaphores != null && waitSemaphores.Length > 0
-                    ? GCHandle.Alloc(waitSemaphores)
-                    : default(GCHandle);
-                try
+                fixed (VkSemaphore* waitPtr = waitSemaphores)
                 {
                     var result = VkResult.ErrorDeviceLost;
                     var info = new VkPresentInfoKHR()
@@ -170,19 +165,11 @@ namespace VulkanLibrary.Managed.Handles
                         PSwapchains = &swapHandle,
                         PImageIndices = &imageIndex,
                         WaitSemaphoreCount = (uint) (waitSemaphores?.Length ?? 0),
-                        PWaitSemaphores =
-                            (VkSemaphore*) (waitSemaphores != null && waitSemaphores.Length > 0
-                                ? Marshal.UnsafeAddrOfPinnedArrayElement(waitSemaphores, 0)
-                                : IntPtr.Zero).ToPointer(),
+                        PWaitSemaphores = waitPtr,
                         PResults = &result
                     };
                     Handle.QueuePresentKHR(&info);
                     VkException.Check(result);
-                }
-                finally
-                {
-                    if (waitSemaphores != null && waitSemaphores.Length > 0)
-                        pinWait.Free();
                 }
             }
         }

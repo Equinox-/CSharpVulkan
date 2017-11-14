@@ -7,14 +7,15 @@ namespace VulkanLibrary.Managed.Handles
 {
     public partial class CommandBuffer
     {
-        private enum State
+        protected enum State
         {
             Allocated,
             Building,
-            Built
+            Built,
+            Submitted
         }
 
-        private State _state;
+        protected State _state;
 
         public CommandBuffer(CommandPool pool, VkCommandBufferLevel level)
         {
@@ -37,6 +38,20 @@ namespace VulkanLibrary.Managed.Handles
             }
         }
 
+        public bool IsBuilt => _state == State.Built;
+        public bool IsBuilding => _state == State.Building;
+
+        /// <summary>
+        /// Resets this command buffer
+        /// </summary>
+        /// <param name="flag">reset flag</param>
+        public void Reset(VkCommandBufferResetFlag flag)
+        {
+            AssertValid();
+            Handle.ResetCommandBuffer(flag);
+            _state = State.Allocated;
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void AssertBuilding()
         {
@@ -51,7 +66,7 @@ namespace VulkanLibrary.Managed.Handles
             Debug.Assert(_state == State.Built, "Buffer hasn't been built");
         }
 
-        public CommandBufferRecorder RecordCommands(VkCommandBufferUsageFlag usage,
+        protected void BeginRecording(VkCommandBufferUsageFlag usage,
             VkCommandBufferInheritanceInfo? inheritance = null)
         {
             AssertValid();
@@ -69,7 +84,13 @@ namespace VulkanLibrary.Managed.Handles
                 Handle.BeginCommandBuffer(&info);
                 _state = State.Building;
             }
-            return new CommandBufferRecorder(this);
+        }
+
+        public CommandBufferRecorder<CommandBuffer> RecordCommands(VkCommandBufferUsageFlag usage,
+            VkCommandBufferInheritanceInfo? inheritance = null)
+        {
+            BeginRecording(usage, inheritance);
+            return new CommandBufferRecorder<CommandBuffer>(this);
         }
 
         internal void FinishBuild()
