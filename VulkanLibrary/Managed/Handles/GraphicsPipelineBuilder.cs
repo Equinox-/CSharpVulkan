@@ -7,11 +7,10 @@ using VulkanLibrary.Unmanaged.Handles;
 
 namespace VulkanLibrary.Managed.Handles
 {
-    public class GraphicsPipelineBuilder<TAttachment>
+    public class GraphicsPipelineBuilder
     {
         private readonly RenderPass _pass;
         private readonly uint _subpassId;
-        private readonly Func<TAttachment, uint> _attachmentLookup;
         private readonly PipelineLayout _pipelineLayout;
         private readonly List<GCHandle> _pins = new List<GCHandle>();
         private readonly List<IntPtr> _strPins = new List<IntPtr>();
@@ -24,8 +23,8 @@ namespace VulkanLibrary.Managed.Handles
         private readonly Dictionary<uint, VkVertexInputAttributeDescription> _vertexAttributeDescriptions =
             new Dictionary<uint, VkVertexInputAttributeDescription>();
 
-        private readonly Dictionary<TAttachment, VkPipelineColorBlendAttachmentState> _blendAttachmentStates =
-            new Dictionary<TAttachment, VkPipelineColorBlendAttachmentState>();
+        private readonly Dictionary<uint, VkPipelineColorBlendAttachmentState> _blendAttachmentStates =
+            new Dictionary<uint, VkPipelineColorBlendAttachmentState>();
 
         private readonly List<VkViewport> _viewports = new List<VkViewport>();
         private readonly List<VkRect2D> _viewportScissors = new List<VkRect2D>();
@@ -38,10 +37,8 @@ namespace VulkanLibrary.Managed.Handles
         private VkPipelineColorBlendStateCreateInfo _colorBlendInfo;
         private readonly List<VkDynamicState> _dynamicStates = new List<VkDynamicState>();
 
-        public GraphicsPipelineBuilder(RenderPass pass, uint subpass, PipelineLayout pipelineLayout,
-            Func<TAttachment, uint> attachmentLookup)
+        public GraphicsPipelineBuilder(RenderPass pass, uint subpass, PipelineLayout pipelineLayout)
         {
-            _attachmentLookup = attachmentLookup;
             _pipelineLayout = pipelineLayout;
             _pass = pass;
             _subpassId = subpass;
@@ -50,16 +47,16 @@ namespace VulkanLibrary.Managed.Handles
             {
                 _asmInfo.SType = VkStructureType.PipelineInputAssemblyStateCreateInfo;
                 _asmInfo.Flags = 0;
-                _asmInfo.PNext = (void*) 0;
+                _asmInfo.PNext = IntPtr.Zero;
 
                 _tessInfo.SType = VkStructureType.PipelineTessellationStateCreateInfo;
                 _tessInfo.Flags = 0;
-                _tessInfo.PNext = (void*) 0;
+                _tessInfo.PNext = IntPtr.Zero;
                 _tessInfo.PatchControlPoints = 0;
 
                 _rasterInfo.SType = VkStructureType.PipelineRasterizationStateCreateInfo;
                 _rasterInfo.Flags = 0;
-                _rasterInfo.PNext = (void*) 0;
+                _rasterInfo.PNext = IntPtr.Zero;
                 _rasterInfo.DepthBiasEnable = false;
                 _rasterInfo.DepthClampEnable = false;
                 _rasterInfo.RasterizerDiscardEnable = false;
@@ -68,61 +65,65 @@ namespace VulkanLibrary.Managed.Handles
 
                 _multisampleInfo.SType = VkStructureType.PipelineMultisampleStateCreateInfo;
                 _multisampleInfo.Flags = 0;
-                _multisampleInfo.PNext = (void*) 0;
+                _multisampleInfo.PNext = IntPtr.Zero;
                 _multisampleInfo.RasterizationSamples = VkSampleCountFlag.Count1;
                 _multisampleInfo.SampleShadingEnable = false;
 
                 _depthStencilInfo.SType = VkStructureType.PipelineDepthStencilStateCreateInfo;
                 _depthStencilInfo.Flags = 0;
-                _depthStencilInfo.PNext = (void*) 0;
+                _depthStencilInfo.PNext = IntPtr.Zero;
                 _depthStencilInfo.DepthTestEnable = false;
                 _depthStencilInfo.StencilTestEnable = false;
                 _depthStencilInfo.DepthBoundsTestEnable = false;
 
                 _colorBlendInfo.SType = VkStructureType.PipelineColorBlendStateCreateInfo;
                 _colorBlendInfo.Flags = 0;
-                _colorBlendInfo.PNext = (void*) 0;
+                _colorBlendInfo.PNext = IntPtr.Zero;
                 _colorBlendInfo.LogicOpEnable = false;
             }
         }
 
         public class ShaderStageBuilder
         {
-            private readonly GraphicsPipelineBuilder<TAttachment> _builder;
+            private readonly GraphicsPipelineBuilder _builder;
             private VkPipelineShaderStageCreateInfo _shaderInfo;
             private readonly string _entryPoint;
-            private VkSpecializationInfo? _specializationInfo;
 
-            internal ShaderStageBuilder(GraphicsPipelineBuilder<TAttachment> builder, VkShaderModule handle,
+            internal ShaderStageBuilder(GraphicsPipelineBuilder builder, VkShaderModule handle,
                 VkShaderStageFlag stage, string entryPoint)
             {
                 _builder = builder;
-                _specializationInfo = null;
                 unsafe
                 {
                     _shaderInfo = new VkPipelineShaderStageCreateInfo()
                     {
                         SType = VkStructureType.PipelineShaderStageCreateInfo,
-                        PNext = (void*) 0,
+                        PNext = IntPtr.Zero,
                         Module = handle,
                         Flags = 0,
-                        Stage = stage
+                        Stage = stage,
+                        PSpecializationInfo = (VkSpecializationInfo*) 0
                     };
                 }
+
                 _entryPoint = entryPoint;
             }
 
-            public GraphicsPipelineBuilder<TAttachment> Commit()
+            public unsafe ShaderStageBuilder SpecializationInfo(VkSpecializationInfo* info)
             {
-                if (_specializationInfo.HasValue)
-                    throw new NotSupportedException();
+                _shaderInfo.PSpecializationInfo = info;
+                return this;
+            }
+
+            public GraphicsPipelineBuilder Commit()
+            {
                 var strName = Marshal.StringToHGlobalAnsi(_entryPoint);
                 _builder._strPins.Add(strName);
                 unsafe
                 {
                     _shaderInfo.PName = (byte*) strName.ToPointer();
-                    _shaderInfo.PSpecializationInfo = (VkSpecializationInfo*) 0;
                 }
+
                 _builder._stages.Add(_shaderInfo);
                 return _builder;
             }
@@ -133,7 +134,7 @@ namespace VulkanLibrary.Managed.Handles
             return new ShaderStageBuilder(this, shader.Handle, flags, entryPoint);
         }
 
-        public GraphicsPipelineBuilder<TAttachment> VertexBinding(uint binding, uint stride,
+        public GraphicsPipelineBuilder VertexBinding(uint binding, uint stride,
             VkVertexInputRate rate = VkVertexInputRate.Vertex)
         {
             _vertexBindingDescriptions.Add(binding, new VkVertexInputBindingDescription()
@@ -145,7 +146,7 @@ namespace VulkanLibrary.Managed.Handles
             return this;
         }
 
-        public GraphicsPipelineBuilder<TAttachment> VertexAttribute(uint location, uint binding, VkFormat format,
+        public GraphicsPipelineBuilder VertexAttribute(uint location, uint binding, VkFormat format,
             uint offset)
         {
             _vertexAttributeDescriptions.Add(location, new VkVertexInputAttributeDescription()
@@ -158,7 +159,7 @@ namespace VulkanLibrary.Managed.Handles
             return this;
         }
 
-        public GraphicsPipelineBuilder<TAttachment> Assembly(VkPrimitiveTopology topology,
+        public GraphicsPipelineBuilder Assembly(VkPrimitiveTopology topology,
             bool primitiveRestartEnable = false)
         {
             _asmInfo.Topology = topology;
@@ -166,20 +167,20 @@ namespace VulkanLibrary.Managed.Handles
             return this;
         }
 
-        public GraphicsPipelineBuilder<TAttachment> Tesselation(uint count)
+        public GraphicsPipelineBuilder Tesselation(uint count)
         {
             _tessInfo.PatchControlPoints = count;
             return this;
         }
 
-        public GraphicsPipelineBuilder<TAttachment> Viewport(VkViewport viewport, VkRect2D scissors)
+        public GraphicsPipelineBuilder Viewport(VkViewport viewport, VkRect2D scissors)
         {
             _viewports.Add(viewport);
             _viewportScissors.Add(scissors);
             return this;
         }
 
-        public GraphicsPipelineBuilder<TAttachment> DepthBiasOn(float clamp, float constantFactor, float slopeFactor)
+        public GraphicsPipelineBuilder DepthBiasOn(float clamp, float constantFactor, float slopeFactor)
         {
             _rasterInfo.DepthBiasEnable = true;
             _rasterInfo.DepthBiasClamp = clamp;
@@ -188,25 +189,25 @@ namespace VulkanLibrary.Managed.Handles
             return this;
         }
 
-        public GraphicsPipelineBuilder<TAttachment> DepthBiasOff()
+        public GraphicsPipelineBuilder DepthBiasOff()
         {
             _rasterInfo.DepthBiasEnable = false;
             return this;
         }
 
-        public GraphicsPipelineBuilder<TAttachment> DepthClamp(bool enable)
+        public GraphicsPipelineBuilder DepthClamp(bool enable)
         {
             _rasterInfo.DepthClampEnable = enable;
             return this;
         }
 
-        public GraphicsPipelineBuilder<TAttachment> RasterizerDiscard(bool enable)
+        public GraphicsPipelineBuilder RasterizerDiscard(bool enable)
         {
             _rasterInfo.RasterizerDiscardEnable = enable;
             return this;
         }
 
-        public GraphicsPipelineBuilder<TAttachment> Raster(VkPolygonMode triangleMode, VkCullModeFlag cullMode,
+        public GraphicsPipelineBuilder Raster(VkPolygonMode triangleMode, VkCullModeFlag cullMode,
             VkFrontFace frontFace = VkFrontFace.CounterClockwise)
         {
             _rasterInfo.PolygonMode = triangleMode;
@@ -215,50 +216,50 @@ namespace VulkanLibrary.Managed.Handles
             return this;
         }
 
-        public GraphicsPipelineBuilder<TAttachment> SampleShadingOn(float minSampleShading)
+        public GraphicsPipelineBuilder SampleShadingOn(float minSampleShading)
         {
             _multisampleInfo.SampleShadingEnable = true;
             _multisampleInfo.MinSampleShading = minSampleShading;
             return this;
         }
 
-        public GraphicsPipelineBuilder<TAttachment> SampleShadingOff()
+        public GraphicsPipelineBuilder SampleShadingOff()
         {
             _multisampleInfo.SampleShadingEnable = false;
             return this;
         }
 
-        public GraphicsPipelineBuilder<TAttachment> AlphaToCoverage(bool enable)
+        public GraphicsPipelineBuilder AlphaToCoverage(bool enable)
         {
             _multisampleInfo.AlphaToCoverageEnable = enable;
             return this;
         }
 
-        public GraphicsPipelineBuilder<TAttachment> AlphaToOne(bool enable)
+        public GraphicsPipelineBuilder AlphaToOne(bool enable)
         {
             _multisampleInfo.AlphaToOneEnable = enable;
             return this;
         }
 
-        public GraphicsPipelineBuilder<TAttachment> SampleMask()
+        public GraphicsPipelineBuilder SampleMask()
         {
             throw new NotImplementedException();
         }
 
-        public GraphicsPipelineBuilder<TAttachment> DepthTest(bool enable, VkCompareOp op = VkCompareOp.LessOrEqual)
+        public GraphicsPipelineBuilder DepthTest(bool enable, VkCompareOp op = VkCompareOp.LessOrEqual)
         {
             _depthStencilInfo.DepthTestEnable = enable;
             _depthStencilInfo.DepthCompareOp = op;
             return this;
         }
 
-        public GraphicsPipelineBuilder<TAttachment> DepthWrite(bool enable)
+        public GraphicsPipelineBuilder DepthWrite(bool enable)
         {
             _depthStencilInfo.DepthWriteEnable = enable;
             return this;
         }
 
-        public GraphicsPipelineBuilder<TAttachment> StencilTestOn(VkStencilOpState front, VkStencilOpState back)
+        public GraphicsPipelineBuilder StencilTestOn(VkStencilOpState front, VkStencilOpState back)
         {
             _depthStencilInfo.StencilTestEnable = true;
             _depthStencilInfo.Front = front;
@@ -266,13 +267,13 @@ namespace VulkanLibrary.Managed.Handles
             return this;
         }
 
-        public GraphicsPipelineBuilder<TAttachment> StencilTestOff()
+        public GraphicsPipelineBuilder StencilTestOff()
         {
             _depthStencilInfo.StencilTestEnable = false;
             return this;
         }
 
-        public GraphicsPipelineBuilder<TAttachment> DepthBoundsOn(float min, float max)
+        public GraphicsPipelineBuilder DepthBoundsOn(float min, float max)
         {
             _depthStencilInfo.DepthBoundsTestEnable = true;
             _depthStencilInfo.MinDepthBounds = min;
@@ -280,20 +281,20 @@ namespace VulkanLibrary.Managed.Handles
             return this;
         }
 
-        public GraphicsPipelineBuilder<TAttachment> DepthBoundsOff()
+        public GraphicsPipelineBuilder DepthBoundsOff()
         {
             _depthStencilInfo.DepthBoundsTestEnable = false;
             return this;
         }
 
-        public GraphicsPipelineBuilder<TAttachment> LogicOp(VkLogicOp op = VkLogicOp.NoOp)
+        public GraphicsPipelineBuilder LogicOp(VkLogicOp op = VkLogicOp.NoOp)
         {
             _colorBlendInfo.LogicOp = op;
             _colorBlendInfo.LogicOpEnable = op != VkLogicOp.NoOp;
             return this;
         }
 
-        public GraphicsPipelineBuilder<TAttachment> BlendConstants(VkColor color)
+        public GraphicsPipelineBuilder BlendConstants(VkColor color)
         {
             unsafe
             {
@@ -305,11 +306,13 @@ namespace VulkanLibrary.Managed.Handles
                     blendConstants[3] = color.A;
                 }
             }
+
             return this;
         }
 
-        public GraphicsPipelineBuilder<TAttachment> AttachmentBlendOff(TAttachment attachment, VkColorComponentFlag writeMask =
-            VkColorComponentFlag.R | VkColorComponentFlag.G | VkColorComponentFlag.B | VkColorComponentFlag.A)
+        public GraphicsPipelineBuilder AttachmentBlendOff(uint attachment,
+            VkColorComponentFlag writeMask =
+                VkColorComponentFlag.R | VkColorComponentFlag.G | VkColorComponentFlag.B | VkColorComponentFlag.A)
         {
             _blendAttachmentStates.Add(attachment, new VkPipelineColorBlendAttachmentState()
             {
@@ -319,7 +322,7 @@ namespace VulkanLibrary.Managed.Handles
             return this;
         }
 
-        public GraphicsPipelineBuilder<TAttachment> AttachmentBlendOn(TAttachment attachment,
+        public GraphicsPipelineBuilder AttachmentBlendOn(uint attachment,
             VkBlendFactor srcColorFactor, VkBlendFactor dstColorFactor, VkBlendOp colorOp,
             VkBlendFactor? srcAlphaFactor = null, VkBlendFactor? dstAlphaFactor = null,
             VkBlendOp? alphaOp = null, VkColorComponentFlag writeMask =
@@ -345,13 +348,13 @@ namespace VulkanLibrary.Managed.Handles
             return this;
         }
 
-        public GraphicsPipelineBuilder<TAttachment> DynamicStateOff()
+        public GraphicsPipelineBuilder DynamicStateOff()
         {
             _dynamicStates.Clear();
             return this;
         }
 
-        public GraphicsPipelineBuilder<TAttachment> DynamicState(params VkDynamicState[] states)
+        public GraphicsPipelineBuilder DynamicState(params VkDynamicState[] states)
         {
             _dynamicStates.AddRange(states);
             return this;
@@ -360,14 +363,14 @@ namespace VulkanLibrary.Managed.Handles
         private Pipeline _basePipeline = null;
         private int _basePipelineIndex;
 
-        public GraphicsPipelineBuilder<TAttachment> Derivative(Pipeline @base, int baseIndex)
+        public GraphicsPipelineBuilder Derivative(Pipeline @base, int baseIndex)
         {
             _basePipeline = @base;
             _basePipelineIndex = baseIndex;
             return this;
         }
 
-        public GraphicsPipelineBuilder<TAttachment> NoDerivative()
+        public GraphicsPipelineBuilder NoDerivative()
         {
             _basePipeline = null;
             return this;
@@ -375,7 +378,7 @@ namespace VulkanLibrary.Managed.Handles
 
         private VkPipelineCreateFlag _flags;
 
-        public GraphicsPipelineBuilder<TAttachment> Flags(VkPipelineCreateFlag flags)
+        public GraphicsPipelineBuilder Flags(VkPipelineCreateFlag flags)
         {
             _flags = flags;
             return this;
@@ -392,11 +395,11 @@ namespace VulkanLibrary.Managed.Handles
                 attributeBindings[kv.Key] = kv.Value;
             var blendStates = new VkPipelineColorBlendAttachmentState[_blendAttachmentStates.Count];
             foreach (var kv in _blendAttachmentStates)
-                blendStates[_attachmentLookup(kv.Key)] = kv.Value;
+                blendStates[kv.Key] = kv.Value;
             var viewports = _viewports.ToArray();
             var scissors = _viewportScissors.ToArray();
             var dynamicStates = _dynamicStates.ToArray();
-            
+
 
             try
             {
@@ -418,7 +421,7 @@ namespace VulkanLibrary.Managed.Handles
                         var vertexInputState = new VkPipelineVertexInputStateCreateInfo()
                         {
                             SType = VkStructureType.PipelineVertexInputStateCreateInfo,
-                            PNext = (void*) 0,
+                            PNext = IntPtr.Zero,
                             Flags = 0,
                             VertexBindingDescriptionCount = (uint) vertexBindings.Length,
                             PVertexBindingDescriptions = vertexPtr,
@@ -432,7 +435,7 @@ namespace VulkanLibrary.Managed.Handles
                         var viewportState = new VkPipelineViewportStateCreateInfo()
                         {
                             SType = VkStructureType.PipelineViewportStateCreateInfo,
-                            PNext = (void*) 0,
+                            PNext = IntPtr.Zero,
                             Flags = 0,
                             ViewportCount = (uint) viewports.Length,
                             PViewports = viewportPtr,
@@ -450,16 +453,16 @@ namespace VulkanLibrary.Managed.Handles
                         var dynamicState = new VkPipelineDynamicStateCreateInfo()
                         {
                             SType = VkStructureType.PipelineDynamicStateCreateInfo,
-                            PNext = (void*) 0,
+                            PNext = IntPtr.Zero,
                             Flags = 0,
                             DynamicStateCount = (uint) dynamicStates.Length,
                             PDynamicStates = dynamicPtr
                         };
-                        
+
                         var info = new VkGraphicsPipelineCreateInfo()
                         {
                             SType = VkStructureType.GraphicsPipelineCreateInfo,
-                            PNext = (void*) 0,
+                            PNext = IntPtr.Zero,
                             Flags = _flags,
                             StageCount = (uint) stages.Length,
                             PStages = stagePtr,
@@ -479,13 +482,13 @@ namespace VulkanLibrary.Managed.Handles
                             BasePipelineHandle = _basePipeline?.Handle ?? VkPipeline.Null,
                             BasePipelineIndex = _basePipelineIndex
                         };
-                        
+
                         VkPipeline result = VkPipeline.Null;
                         VkException.Check(VkDevice.vkCreateGraphicsPipelines(_pass.Device.Handle, VkPipelineCache.Null,
                             1,
                             &info, _pass.Instance.AllocationCallbacks, &result));
                         Debug.Assert(result != VkPipeline.Null);
-                        return new Pipeline(_pass.Device, VkPipelineBindPoint.Graphics, result);
+                        return new Pipeline(_pass.Device, VkPipelineBindPoint.Graphics, _pipelineLayout, result);
                     }
                 }
             }

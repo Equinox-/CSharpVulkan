@@ -197,6 +197,8 @@ namespace CodeGenerator
                     if (!string.IsNullOrWhiteSpace(split[j]))
                         ns = ns + "." + split[j];
             }
+            writer.WriteLine("// ReSharper disable MemberCanBePrivate.Global");
+            writer.WriteLine("// ReSharper disable InconsistentNaming");
             writer.WriteLine("using System;");
             writer.WriteLine("using System.Collections.Generic;");
             writer.WriteLine("using System.Runtime.InteropServices;");
@@ -208,6 +210,7 @@ namespace CodeGenerator
                 if (ns != nss)
                     writer.WriteLine($"using {nss};");
             }
+
             writer.WriteLine();
             writer.WriteLine($"namespace {ns} {{");
             writer.IncreaseIndent();
@@ -251,6 +254,7 @@ namespace CodeGenerator
                         writer.WriteLineIndent("private ulong _handle;");
                         handleNull = "0UL";
                     }
+
                     writer.WriteLineIndent(
                         $"public static readonly {handle.TypeName} Null = new {handle.TypeName}() {{_handle = {handleNull} }};");
                     writer.WriteLine("#pragma warning restore 649");
@@ -292,6 +296,7 @@ namespace CodeGenerator
                     typeName = typeName.Substring(0, typeName.Length - 4);
                 return typeName;
             }
+
             return name.TypeName;
         }
 
@@ -309,6 +314,7 @@ namespace CodeGenerator
                            tf.Arguments.Any(x =>
                                x.FixedBufferSize != null || x.PointerLevels >= 1 || IsUnsafe(ResolveType(x.TypeName)));
             }
+
             return false;
         }
 
@@ -427,6 +433,7 @@ namespace CodeGenerator
                             writer.WriteLine();
                         }
                     }
+
                     if (parents.Length > 0)
                     {
                         writer.WriteLineIndent($"/// <inheritdoc cref=\"Utilities.VulkanHandle.AssertValid\" />");
@@ -441,6 +448,7 @@ namespace CodeGenerator
                             writer.WriteLineIndent("}");
                         }
                     }
+
                     // try to implement free()
                     var freeMethod = _spec.TypeDefs.Values.OfType<VkCommand>().Where(x =>
                             (x.TypeName.IndexOf("destroy", StringComparison.OrdinalIgnoreCase) != -1
@@ -474,6 +482,7 @@ namespace CodeGenerator
                                 writer.WriteLineIndent("unsafe {");
                                 writer.IncreaseIndent();
                             }
+
                             var argTypes = freeMethod.Arguments.Select(x => ResolveType(x.TypeName)).ToArray();
                             var rootType = argTypes[0] is VkHandle ? argTypes[0].TypeName : "Vulkan";
                             var argCache = new HashSet<VkMember>();
@@ -492,6 +501,7 @@ namespace CodeGenerator
                                     continue;
                                 argCache.Add(arg);
                             }
+
                             writer.WriteIndent();
                             writer.Write($"{rootType}.{freeMethod.TypeName}(");
                             for (var i = 0; i < freeMethod.Arguments.Count; i++)
@@ -531,6 +541,7 @@ namespace CodeGenerator
                                     writer.Write($"({MemberTypeWithPtr(arg)}) 0");
                                 }
                             }
+
                             writer.WriteLine(");");
                             if (isUnsafe)
                             {
@@ -544,12 +555,14 @@ namespace CodeGenerator
                         {
                             writer.WriteLineIndent("// Can't auto generate free method: No canidates");
                         }
+
                         writer.WriteLineIndent($"Handle = {handle.TypeName}.Null;");
                         foreach (VkHandle t in parents)
                         {
                             var resolvedName = ResolveManagedTypeName(t);
                             writer.WriteLineIndent($"{resolvedName} = null;");
                         }
+
                         writer.DecreaseIndent();
                         writer.WriteLineIndent("}");
                     }
@@ -618,12 +631,14 @@ namespace CodeGenerator
                     if (write)
                         writer.WriteLine();
                 }
+
                 {
                     var constants = WriterFor(null);
                     foreach (var entry in nonEnumConstants)
                     {
                         WriteConstant(constants, entry, write);
                     }
+
                     if (write)
                         constants.WriteLine();
                 }
@@ -659,6 +674,7 @@ namespace CodeGenerator
                             if (ftype is VkHandle)
                                 target = ftype;
                         }
+
                         var writer = WriterFor(target);
                         WriteCommand(writer, cmd);
                         writer.WriteLine();
@@ -681,6 +697,7 @@ namespace CodeGenerator
                     sb.Append("[0]");
                 sb.Append(".Length > 0");
             }
+
             sb.Append("? ");
             sb.Append(name);
             for (var j = 0; j < level; j++)
@@ -727,17 +744,18 @@ namespace CodeGenerator
                     else
                         exportUsingGetProc = cmd.Arguments.Any(x => x.TypeName.Equals("VkDevice"));
                 }
+
                 if (cmd.Extension != null)
                     RequiresExtension(writer, cmd.Extension);
                 if (!exportUsingGetProc)
                     writer.WriteLineIndent(
                         $"[DllImport(\"{VulkanLibraryName}\", CallingConvention = CallingConvention.StdCall)]");
                 writer.WriteIndent();
-                writer.Write("public unsafe ");
+                writer.Write("public ");
                 if (exportUsingGetProc)
-                    writer.Write("delegate ");
+                    writer.Write("unsafe delegate ");
                 else
-                    writer.Write("static extern ");
+                    writer.Write("static extern unsafe ");
                 // ReSharper disable once ConvertIfStatementToConditionalTernaryExpression
                 if (cmd.ReturnType.FixedBufferSize != null)
                     writer.Write(dummies[cmd.ReturnType]);
@@ -810,6 +828,7 @@ namespace CodeGenerator
                 if (ftype is VkHandle handle)
                     target = handle;
             }
+
             var proxyName = cmd.TypeName.Substring(cmd.TypeName.StartsWith("vkCmd") ? 5 : 2);
 
             #region Proxy 1, Assured
@@ -846,7 +865,12 @@ namespace CodeGenerator
 
                 var lengthArgSupplier = new Dictionary<VkMember, HashSet<KeyValuePair<VkMember, int>>>();
                 foreach (var arg in argList)
-                    if (arg.AnnotatedPointerLengths != null && !arg.TypeName.Equals("void"))
+                    if (arg.FixedBufferSize == null && arg.AnnotatedPointerLengths != null &&
+                        !arg.TypeName.Equals("void"))
+                    {
+                        var isString = arg.TypeName.Equals("char");
+                        if (!isString && arg.PointerLevels != 1)
+                            continue;
                         for (var dim = 0; dim < arg.AnnotatedPointerLengths.Count; dim++)
                         {
                             var spec = arg.AnnotatedPointerLengths[dim];
@@ -855,6 +879,7 @@ namespace CodeGenerator
                                 lengthArgSupplier.Add(mem, set = new HashSet<KeyValuePair<VkMember, int>>());
                             set.Add(new KeyValuePair<VkMember, int>(arg, dim));
                         }
+                    }
 
                 EmitComment(writer, cmd.Comment, argList.Where(x => !lengthArgSupplier.ContainsKey(x)).ToList(), null,
                     cmd.ErrorCodes);
@@ -891,7 +916,7 @@ namespace CodeGenerator
                             pureArguments.Add(arg);
                         }
                         else if (arg.AnnotatedPointerLengths != null && arg.AnnotatedPointerLengths.Count > 0
-                                 && !arg.TypeName.Equals("void"))
+                                                                     && !arg.TypeName.Equals("void"))
                         {
                             var name = new StringBuilder(arg.TypeName.Length + arg.PointerLevels +
                                                          arg.AnnotatedPointerLengths.Count);
@@ -904,16 +929,22 @@ namespace CodeGenerator
                                 for (var j = 1; j < arg.AnnotatedPointerLengths.Count; j++)
                                     name.Append("[]");
                             }
-                            else
+                            else if (arg.PointerLevels == 1)
                             {
+                                name.Append("Span<");
                                 if (type == null || type is VkTypeFunctionPointer)
                                     name.Append("IntPtr");
                                 else
                                     name.Append(GetTypeName(type));
-                                name.Append('*', arg.PointerLevels - arg.AnnotatedPointerLengths.Count);
-                                for (var j = 0; j < arg.AnnotatedPointerLengths.Count; j++)
-                                    name.Append("[]");
+                                name.Append('*', arg.PointerLevels - 1);
+                                name.Append(">");
                             }
+                            else
+                            {
+                                pureArguments.Add(arg);
+                                name.Append(MemberTypeWithPtr(arg));
+                            }
+
                             writer.Write(name.ToString());
                         }
                         else
@@ -921,6 +952,7 @@ namespace CodeGenerator
                             pureArguments.Add(arg);
                             writer.Write(MemberTypeWithPtr(arg));
                         }
+
                         writer.Write(" ");
                         writer.Write(SanitizeVariableName(arg.Name));
                     }
@@ -937,6 +969,7 @@ namespace CodeGenerator
                         writer.IncreaseIndent();
                         indents++;
                     }
+
                     foreach (VkMember arg in argList)
                     {
                         if (pureArguments.Contains(arg))
@@ -976,7 +1009,8 @@ namespace CodeGenerator
                             }
                             else
                             {
-                                writer.WriteLineIndent($"fixed ({declaration} = {sanitaryName}) {{");
+                                writer.WriteLineIndent(
+                                    $"fixed ({declaration} = &{sanitaryName}.DangerousGetPinnableReference()) {{");
                                 writer.IncreaseIndent();
                                 indents++;
                             }
@@ -986,12 +1020,14 @@ namespace CodeGenerator
                             writer.WriteLineIndent("//" + declaration + ";");
                         }
                     }
+
                     if (aliasReturn)
                     {
                         var ret = cmd.Arguments[cmd.Arguments.Count - 1];
                         writer.WriteLineIndent(
                             $"{MemberTypeWithPtr(ret, 1)} retval = default({MemberTypeWithPtr(ret, 1)});");
                     }
+
                     {
                         if (ansiStrings.Count > 0)
                         {
@@ -999,6 +1035,7 @@ namespace CodeGenerator
                             writer.WriteLineIndent("{");
                             writer.IncreaseIndent();
                         }
+
                         // Emit call
                         writer.WriteIndent();
                         if (cmd.ReturnType.TypeName.Equals(VkResultType))
@@ -1013,6 +1050,7 @@ namespace CodeGenerator
                             writer.Write("this");
                             writtenCount++;
                         }
+
                         foreach (VkMember arg in argList)
                         {
                             if (writtenCount++ > 0)
@@ -1023,18 +1061,21 @@ namespace CodeGenerator
                             if (!pureArguments.Contains(arg))
                                 writer.Write("Real");
                         }
+
                         if (aliasReturn)
                         {
                             if (writtenCount++ > 0)
                                 writer.Write(", ");
                             writer.Write("&retval");
                         }
+
                         if (cmd.ReturnType.TypeName.Equals(VkResultType))
                         {
                             writer.WriteLine("));");
                         }
                         else
                             writer.WriteLine(");");
+
                         if (aliasReturn)
                             writer.WriteLineIndent("return retval;");
 
@@ -1082,6 +1123,7 @@ namespace CodeGenerator
                     if (lastArg.Comment.IndexOf("which is set to", StringComparison.OrdinalIgnoreCase) != -1)
                         level += 2;
                 }
+
                 // ReSharper disable once InvertIf
                 if (level >= 2)
                 {
@@ -1126,7 +1168,7 @@ namespace CodeGenerator
                                 pureArguments.Add(arg);
                             }
                             else if (arg.AnnotatedPointerLengths != null && arg.AnnotatedPointerLengths.Count > 0
-                                     && !arg.TypeName.Equals("void"))
+                                                                         && !arg.TypeName.Equals("void"))
                             {
                                 var name = new StringBuilder(arg.TypeName.Length + arg.PointerLevels +
                                                              arg.AnnotatedPointerLengths.Count);
@@ -1149,6 +1191,7 @@ namespace CodeGenerator
                                     for (var j = 0; j < arg.AnnotatedPointerLengths.Count; j++)
                                         name.Append("[]");
                                 }
+
                                 writer.Write(name.ToString());
                             }
                             else
@@ -1156,6 +1199,7 @@ namespace CodeGenerator
                                 pureArguments.Add(arg);
                                 writer.Write(MemberTypeWithPtr(arg));
                             }
+
                             writer.Write(" ");
                             writer.Write(SanitizeVariableName(arg.Name));
                         }
@@ -1204,6 +1248,7 @@ namespace CodeGenerator
                                 writer.WriteLineIndent("//" + declaration + ";");
                             }
                         }
+
                         writer.WriteIndent();
                         writer.Write($"{returnTypeName} retval = ");
                         if (lastArg.PointerLevels > 1)
@@ -1218,6 +1263,7 @@ namespace CodeGenerator
                         {
                             writer.WriteLine($"default({returnTypeName});");
                         }
+
                         {
                             if (ansiStrings.Count > 0)
                             {
@@ -1225,6 +1271,7 @@ namespace CodeGenerator
                                 writer.WriteLineIndent("{");
                                 writer.IncreaseIndent();
                             }
+
                             // Emit call
                             writer.WriteIndent();
                             if (cmd.ReturnType.TypeName.Equals(VkResultType))
@@ -1239,6 +1286,7 @@ namespace CodeGenerator
                                 writer.Write("this");
                                 writtenCount++;
                             }
+
                             foreach (VkMember arg in argList)
                             {
                                 if (writtenCount++ > 0)
@@ -1247,6 +1295,7 @@ namespace CodeGenerator
                                 if (!pureArguments.Contains(arg))
                                     writer.Write("Real");
                             }
+
                             if (writtenCount++ > 0)
                                 writer.Write(", ");
                             writer.Write("&retval");
@@ -1257,6 +1306,7 @@ namespace CodeGenerator
                             }
                             else
                                 writer.WriteLine(");");
+
                             writer.WriteLineIndent("return retval;");
 
                             if (ansiStrings.Count > 0)
@@ -1335,6 +1385,7 @@ namespace CodeGenerator
                 // avoid boxing issues
                 count = long.Parse(new DataTable().Compute(res, "").ToString());
             }
+
             return count;
         }
 
@@ -1383,6 +1434,7 @@ namespace CodeGenerator
                         }
                         else if (type is VkTypeFunctionPointer ptr)
                             return $"<see cref=\"{docval}\"/>";
+
                         break;
                     }
                     case "code":
@@ -1536,9 +1588,11 @@ namespace CodeGenerator
                         continue;
                     }
                 }
+
                 if (type is VkStructOrUnion child && IsConstrainedDefault(child))
                     return true;
             }
+
             return false;
         }
 
@@ -1583,9 +1637,11 @@ namespace CodeGenerator
                         }
                     }
                 }
+
                 writer.DecreaseIndent();
                 writer.WriteLineIndent("};");
             }
+
             if (IsConstrainedDefault(@struct))
             {
                 writer.WriteLineIndent("/// <summary>");
@@ -1620,13 +1676,16 @@ namespace CodeGenerator
                                     var expr = SubstituteConstantExpression(member.PossibleValueExpressions[0], true);
                                     writer.WriteLineIndent($"{SanitizeStructMemberName(member.Name)} = {expr},");
                                 }
+
                                 break;
                         }
                     }
                 }
+
                 writer.DecreaseIndent();
                 writer.WriteLineIndent("};");
             }
+
             foreach (var cst in @struct.Members)
             {
                 EmitComment(writer, cst.Comment, null, null);
@@ -1686,6 +1745,7 @@ namespace CodeGenerator
                 else
                     writer.WriteLineIndent($"public {MemberTypeWithPtr(cst)} {name};");
             }
+
             foreach (var cst in @struct.Members)
             {
                 var type = ResolveType(cst.TypeName);
@@ -1703,6 +1763,7 @@ namespace CodeGenerator
                     writer.WriteLineIndent("}");
                 }
             }
+
             writer.DecreaseIndent();
             writer.WriteLineIndent("}");
         }
@@ -1718,8 +1779,14 @@ namespace CodeGenerator
             var type = ResolveType(member.TypeName);
             if (type == null || type is VkTypeFunctionPointer)
                 name.Append("IntPtr");
+            else if (type.TypeName == "void" && member.PointerLevels - reducePointers == 1)
+            {
+                name.Append("IntPtr");
+                reducePointers++;
+            }
             else
                 name.Append(GetTypeName(type));
+
             name.Append('*', member.PointerLevels - reducePointers);
             return name.ToString();
         }
@@ -1747,6 +1814,7 @@ namespace CodeGenerator
                     w.WriteLine(line.Trim('/', ' ', '\t'));
                 }
             }
+
             w.WriteLineIndent("/// </summary>");
             if (parameters != null)
                 foreach (var p in parameters)
@@ -1757,6 +1825,7 @@ namespace CodeGenerator
                         w.Write(RewriteComment(p.Comment).Trim('/', ' ', '\t'));
                     w.WriteLine("</param>");
                 }
+
             if (result != null)
             {
                 w.WriteIndent();
@@ -1765,6 +1834,7 @@ namespace CodeGenerator
                     w.Write(RewriteComment(result.Comment).Trim('/', ' ', '\t'));
                 w.WriteLine("</returns>");
             }
+
             if (exceptions == null) return;
             foreach (var except in exceptions)
                 if (_vkExceptionTypes.TryGetValue(except, out string exceptionName))
@@ -1779,12 +1849,14 @@ namespace CodeGenerator
                 if (@enum.IsBitmask)
                     writer.WriteLineIndent("[Flags]");
             }
+
             var typeName = GetTypeName(@enum);
             if (write)
             {
                 writer.WriteLineIndent($"public enum {typeName} : {GetTypeName(ResolveType(@enum.BackingType))} {{");
                 writer.IncreaseIndent();
             }
+
             foreach (var cst in @enum.Values)
             {
                 var newName =
@@ -1800,6 +1872,7 @@ namespace CodeGenerator
                     writer.WriteLineIndent($"{newName} = {SubstituteConstantExpression(cst.Expression, true)},");
                 }
             }
+
             if (write && @enum.IsBitmask)
             {
                 if (!_constantLookupTable.ContainsValue(typeName + ".None"))
@@ -1809,6 +1882,7 @@ namespace CodeGenerator
                     writer.WriteLineIndent("/// </summary>");
                     writer.WriteLineIndent($"None = 0,");
                 }
+
                 if (@enum.Values.Any(x => x.Extension == null))
                 {
                     writer.WriteLineIndent("/// <summary>");
@@ -1826,9 +1900,11 @@ namespace CodeGenerator
                         writer.Write(_constantLookupTable[cst].Substring(typeName.Length + 1));
                         first = false;
                     }
+
                     writer.WriteLine();
                 }
             }
+
             if (!write)
                 return;
             writer.DecreaseIndent();
@@ -1859,6 +1935,7 @@ namespace CodeGenerator
                             writer.WriteLineIndent($"case VkResult.{newName}: return new Vk{newName}();");
                         }
                     }
+
                     writer.WriteLineIndent($"default: return new VkException(result);");
                     writer.DecreaseIndent();
                     writer.WriteLineIndent("}");
@@ -1955,6 +2032,7 @@ namespace CodeGenerator
                 writer.Write(" ");
                 writer.Write(SanitizeVariableName(ptr.Arguments[i].Name));
             }
+
             writer.WriteLine(");");
         }
 
@@ -1968,6 +2046,7 @@ namespace CodeGenerator
                 if (i >= other.Length || removeFrom[i] != other[i])
                     return removeFrom.Substring(lastBoundary);
             }
+
             return "";
         }
 
@@ -1990,6 +2069,7 @@ namespace CodeGenerator
                 else
                     result.Append(char.ToLower(value[i]));
             }
+
             return result.ToString();
         }
 
@@ -2002,6 +2082,7 @@ namespace CodeGenerator
                     writer.DecreaseIndent();
                     writer.WriteLineIndent("}");
                 }
+
                 writer.Close();
             }
         }

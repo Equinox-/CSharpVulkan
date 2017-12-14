@@ -1,4 +1,5 @@
-﻿using System.Runtime.InteropServices;
+﻿using System;
+using System.Runtime.InteropServices;
 
 namespace VulkanLibrary.Unmanaged.Handles
 {
@@ -21,16 +22,8 @@ namespace VulkanLibrary.Unmanaged.Handles
                 do
                 {
                     props = new VkImage[count];
-                    var pin = GCHandle.Alloc(props, GCHandleType.Pinned);
-                    try
-                    {
-                        var arrayPtr = count > 0 ? Marshal.UnsafeAddrOfPinnedArrayElement(props, 0).ToPointer() : (void*) 0;
-                        VkException.Check(vkGetSwapchainImagesKHR(this, swapchain, &count, (VkImage*) arrayPtr));
-                    }
-                    finally
-                    {
-                        pin.Free();
-                    }
+                    fixed (VkImage* pptr = props)
+                        VkException.Check(vkGetSwapchainImagesKHR(this, swapchain, &count, pptr));
                 } while (props.Length != count);
                 return props;
             }

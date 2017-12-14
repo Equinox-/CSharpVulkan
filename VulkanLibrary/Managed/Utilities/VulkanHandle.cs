@@ -22,6 +22,11 @@ namespace VulkanLibrary.Managed.Utilities
         /// </summary>
         private int _disposed = (int) LifeState.Alive;
 
+        /// <summary>
+        /// Is this handle allocated
+        /// </summary>
+        public bool IsAllocated => _disposed == (int) LifeState.Alive;
+
         /// <inheritdoc/>
         public void Dispose()
         {

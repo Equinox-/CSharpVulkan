@@ -1,12 +1,14 @@
 ﻿using System;
 using System.Runtime.InteropServices;
+using NLog;
+using VulkanLibrary.Managed.Buffers;
 using VulkanLibrary.Managed.Memory;
 using VulkanLibrary.Unmanaged;
 using VulkanLibrary.Unmanaged.Handles;
 
 namespace VulkanLibrary.Managed.Handles
 {
-    public partial class Buffer : IDedicatedMemoryOwner
+    public partial class Buffer : IBindableBuffer, IDedicatedMemoryOwner
     {
         /// <summary>
         /// Size of this buffer
@@ -29,6 +31,8 @@ namespace VulkanLibrary.Managed.Handles
         public Buffer(Device dev, VkBufferUsageFlag usage, VkBufferCreateFlag flags, ulong size,
             params uint[] sharedQueueFamilies)
         {
+            Logging.Allocations?.Trace($"Creating {Extensions.FormatFileSize(size)} buffer with usage {usage}");
+            
             Device = dev;
             Size = size;
             Usage = usage;
@@ -42,7 +46,7 @@ namespace VulkanLibrary.Managed.Handles
                     var info = new VkBufferCreateInfo()
                     {
                         SType = VkStructureType.BufferCreateInfo,
-                        PNext = (void*) 0,
+                        PNext = IntPtr.Zero,
                         Flags = flags,
                         Size = size,
                         Usage = usage,
@@ -71,7 +75,8 @@ namespace VulkanLibrary.Managed.Handles
         {
             get
             {
-                AssertValid();
+                base.AssertValid();
+                Device.AssertValid();
                 if (!Device.ExtensionEnabled(VkExtension.KhrGetMemoryRequirements2))
                 {
                     var requirements = Device.Handle.GetBufferMemoryRequirements(Handle);
@@ -86,12 +91,12 @@ namespace VulkanLibrary.Managed.Handles
                     var dedInfo = new VkMemoryDedicatedRequirementsKHR()
                     {
                         SType = VkStructureType.MemoryDedicatedRequirementsKhr,
-                        PNext = (void*) 0
+                        PNext = IntPtr.Zero
                     };
                     var memReq2 = new VkBufferMemoryRequirementsInfo2KHR()
                     {
                         SType = VkStructureType.ImageMemoryRequirementsInfo2Khr,
-                        PNext = useDedicated ? &dedInfo : (void*) 0,
+                        PNext = useDedicated ? new IntPtr(&dedInfo) :IntPtr.Zero,
                         Buffer = Handle
                     };
                     var reqs2 = Device.Handle.GetBufferMemoryRequirements2KHR(&memReq2);
@@ -123,5 +128,8 @@ namespace VulkanLibrary.Managed.Handles
             info.Image = VkImage.Null;
             return true;
         }
+
+        public VkBuffer BindingHandle => Handle;
+        public ulong Offset => 0;
     }
 }

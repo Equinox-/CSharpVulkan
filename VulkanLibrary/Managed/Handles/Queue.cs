@@ -51,7 +51,7 @@ namespace VulkanLibrary.Managed.Handles
                 var info = new VkSubmitInfo()
                 {
                     SType = VkStructureType.SubmitInfo,
-                    PNext = (void*) 0,
+                    PNext = IntPtr.Zero,
                     CommandBufferCount = 1,
                     PCommandBuffers = &buff,
                     SignalSemaphoreCount = signal.HasValue ? 1u : 0u,
@@ -106,7 +106,7 @@ namespace VulkanLibrary.Managed.Handles
                             var info = new VkSubmitInfo()
                             {
                                 SType = VkStructureType.SubmitInfo,
-                                PNext = (void*) 0,
+                                PNext = IntPtr.Zero,
                                 CommandBufferCount = (uint) arrayBuffers.Length,
                                 PCommandBuffers = buffer,
                                 SignalSemaphoreCount = (uint) (signal?.Length ?? 0),
@@ -123,7 +123,7 @@ namespace VulkanLibrary.Managed.Handles
                         var info = new VkSubmitInfo()
                         {
                             SType = VkStructureType.SubmitInfo,
-                            PNext = (void*) 0,
+                            PNext = IntPtr.Zero,
                             CommandBufferCount = 1,
                             PCommandBuffers = &handle,
                             SignalSemaphoreCount = (uint) (signal?.Length ?? 0),
@@ -160,7 +160,7 @@ namespace VulkanLibrary.Managed.Handles
                     var info = new VkPresentInfoKHR()
                     {
                         SType = VkStructureType.PresentInfoKhr,
-                        PNext = (void*) 0,
+                        PNext = IntPtr.Zero,
                         SwapchainCount = 1,
                         PSwapchains = &swapHandle,
                         PImageIndices = &imageIndex,

@@ -5,8 +5,9 @@ namespace VulkanLibrary.Unmanaged
 {
     public partial class Vulkan
     {
+       
         /// <summary>
-        /// To query the available instance extensions, call:
+        /// To query the extensions available call:
         /// </summary>
         /// <param name="layerName">is either `NULL` or a pointer to a null-terminated UTF-8 string naming the layer to retrieve extensions from.</param>
         /// <returns>array of <see cref="VkExtensionProperties"/> structures</returns>
@@ -27,17 +28,10 @@ namespace VulkanLibrary.Unmanaged
                     do
                     {
                         props = new VkExtensionProperties[count];
-                        var pin = GCHandle.Alloc(props, GCHandleType.Pinned);
-                        try
-                        {
-                            var arrayPtr = count > 0 ? Marshal.UnsafeAddrOfPinnedArrayElement(props, 0).ToPointer() : (void*) 0;
-                            VkException.Check(vkEnumerateInstanceExtensionProperties(layerNamePtr, &count, (VkExtensionProperties*) arrayPtr));
-                        }
-                        finally
-                        {
-                            pin.Free();
-                        }
+                        fixed (VkExtensionProperties* pptr = props)
+                            VkException.Check(vkEnumerateInstanceExtensionProperties(layerNamePtr, &count, pptr));
                     } while (props.Length != count);
+
                     return props;
                 }
                 finally
@@ -49,11 +43,11 @@ namespace VulkanLibrary.Unmanaged
         }
 
         /// <summary>
-        /// To query the available layers, call:
+        /// To enumerate instance layers, call:
         /// </summary>
-        /// <returns>array of <see cref="VkLayerProperties"/> structures</returns>
         /// <exception cref="VulkanLibrary.Unmanaged.VkErrorOutOfHostMemory"></exception>
         /// <exception cref="VulkanLibrary.Unmanaged.VkErrorOutOfDeviceMemory"></exception>
+        /// <returns>array of <see cref="VkLayerProperties"/> structures</returns>
         public static VkLayerProperties[] EnumerateLayerProperties()
         {
             unsafe
@@ -63,17 +57,10 @@ namespace VulkanLibrary.Unmanaged
                 do
                 {
                     props = new VkLayerProperties[count];
-                    var pin = GCHandle.Alloc(props, GCHandleType.Pinned);
-                    try
-                    {
-                        var arrayPtr = count > 0 ? Marshal.UnsafeAddrOfPinnedArrayElement(props, 0).ToPointer() : (void*) 0;
-                        VkException.Check(vkEnumerateInstanceLayerProperties(&count, (VkLayerProperties*) arrayPtr));
-                    }
-                    finally
-                    {
-                        pin.Free();
-                    }
+                    fixed (VkLayerProperties* pptr = props)
+                        VkException.Check(vkEnumerateInstanceLayerProperties(&count, pptr));
                 } while (props.Length != count);
+
                 return props;
             }
         }

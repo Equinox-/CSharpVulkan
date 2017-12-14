@@ -1,4 +1,5 @@
-﻿using VulkanLibrary.Unmanaged;
+﻿using System;
+using VulkanLibrary.Unmanaged;
 using VulkanLibrary.Unmanaged.Handles;
 
 namespace VulkanLibrary.Managed.Handles
@@ -13,7 +14,7 @@ namespace VulkanLibrary.Managed.Handles
                 var info = new VkFenceCreateInfo()
                 {
                     SType = VkStructureType.FenceCreateInfo,
-                    PNext = (void*) 0,
+                    PNext = IntPtr.Zero,
                     Flags = flags
                 };
                 Handle = dev.Handle.CreateFence(&info, Instance.AllocationCallbacks);

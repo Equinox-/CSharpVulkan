@@ -33,7 +33,7 @@ namespace VulkanLibrary.Managed.Handles
         {
             return _attachmentToId[attachment];
         }
-        
+
         public RenderPassWithIdentifiers(Device dev, VkRenderPassCreateInfo info,
             TAttachment[] attachments, TPass[] passes) : base(dev, info)
         {
@@ -41,16 +41,16 @@ namespace VulkanLibrary.Managed.Handles
             _attachmentToId = new Dictionary<TAttachment, uint>(attachments.Length);
             for (var i = 0; i < attachments.Length; i++)
                 _attachmentToId[attachments[i]] = (uint) i;
-            
+
             _idToPass = passes;
             _passToId = new Dictionary<TPass, uint>(passes.Length);
             for (var i = 0; i < passes.Length; i++)
                 _passToId[passes[i]] = (uint) i;
         }
-        
-        public new GraphicsPipelineBuilder<TAttachment> PipelineBuilder(uint subpass, PipelineLayout layout)
+
+        public new GraphicsPipelineBuilder PipelineBuilder(TPass subpass, PipelineLayout layout)
         {
-            return new GraphicsPipelineBuilder<TAttachment>(this, subpass, layout, AttachmentId);
+            return new GraphicsPipelineBuilder(this, PassId(subpass), layout);
         }
 
         public new FramebufferBuilder<TAttachment> FramebufferBuilder(VkExtent2D size, uint layers = 1)

@@ -6,7 +6,6 @@ namespace VulkanLibrary.Unmanaged.Handles
 {
     public partial struct VkPhysicalDevice
     {
-
         /// <summary>
         /// To query properties of queues available on a physical device, call:
         /// </summary>
@@ -20,21 +19,14 @@ namespace VulkanLibrary.Unmanaged.Handles
                 do
                 {
                     props = new VkQueueFamilyProperties[count];
-                    var pin = GCHandle.Alloc(props, GCHandleType.Pinned);
-                    try
-                    {
-                        var arrayPtr = count > 0 ? Marshal.UnsafeAddrOfPinnedArrayElement(props, 0).ToPointer() : (void*) 0;
-                        vkGetPhysicalDeviceQueueFamilyProperties(this, &count, (VkQueueFamilyProperties*) arrayPtr);
-                    }
-                    finally
-                    {
-                        pin.Free();
-                    }
+                    fixed (VkQueueFamilyProperties* pptr = props)
+                        vkGetPhysicalDeviceQueueFamilyProperties(this, &count, pptr);
                 } while (props.Length != count);
+
                 return props;
             }
         }
-        
+
         /// <summary>
         /// To query the supported presentation modes for a surface, call:
         /// </summary>
@@ -48,27 +40,19 @@ namespace VulkanLibrary.Unmanaged.Handles
         {
             unsafe
             {
-                int[] props;
+                VkPresentModeKHR[] props;
                 uint count = 0;
                 do
                 {
-                    props = new int[count];
-                    var pin = GCHandle.Alloc(props, GCHandleType.Pinned);
-                    try
-                    {
-                        var arrayPtr = count > 0 ? Marshal.UnsafeAddrOfPinnedArrayElement(props, 0).ToPointer() : (void*) 0;
-                        VkException.Check(vkGetPhysicalDeviceSurfacePresentModesKHR(this, surface, &count,
-                            (VkPresentModeKHR*) arrayPtr));
-                    }
-                    finally
-                    {
-                        pin.Free();
-                    }
+                    props = new VkPresentModeKHR[count];
+                    fixed (VkPresentModeKHR* pptr = props)
+                        VkException.Check(vkGetPhysicalDeviceSurfacePresentModesKHR(this, surface, &count, pptr));
                 } while (props.Length != count);
-                return props.Select(x=>(VkPresentModeKHR)x).ToArray();
+
+                return props;
             }
         }
-        
+
         /// <summary>
         /// To query the supported swapchain format-color space pairs for a surface, call:
         /// </summary>
@@ -87,18 +71,10 @@ namespace VulkanLibrary.Unmanaged.Handles
                 do
                 {
                     props = new VkSurfaceFormatKHR[count];
-                    var pin = GCHandle.Alloc(props, GCHandleType.Pinned);
-                    try
-                    {
-                        var arrayPtr = count > 0 ? Marshal.UnsafeAddrOfPinnedArrayElement(props, 0).ToPointer() : (void*) 0;
-                        VkException.Check(vkGetPhysicalDeviceSurfaceFormatsKHR(this, surface, &count,
-                            (VkSurfaceFormatKHR*) arrayPtr));
-                    }
-                    finally
-                    {
-                        pin.Free();
-                    }
+                    fixed (VkSurfaceFormatKHR* pptr = props)
+                        VkException.Check(vkGetPhysicalDeviceSurfaceFormatsKHR(this, surface, &count, pptr));
                 } while (props.Length != count);
+
                 return props;
             }
         }
@@ -125,17 +101,10 @@ namespace VulkanLibrary.Unmanaged.Handles
                     do
                     {
                         props = new VkExtensionProperties[count];
-                        var pin = GCHandle.Alloc(props, GCHandleType.Pinned);
-                        try
-                        {
-                            var arrayPtr = count > 0 ? Marshal.UnsafeAddrOfPinnedArrayElement(props, 0).ToPointer() : (void*) 0;
-                            VkException.Check(vkEnumerateDeviceExtensionProperties(this, layerNamePtr, &count, (VkExtensionProperties*) arrayPtr));
-                        }
-                        finally
-                        {
-                            pin.Free();
-                        }
+                        fixed (VkExtensionProperties* pptr = props)
+                            VkException.Check(vkEnumerateDeviceExtensionProperties(this, layerNamePtr, &count, pptr));
                     } while (props.Length != count);
+
                     return props;
                 }
                 finally
@@ -161,17 +130,10 @@ namespace VulkanLibrary.Unmanaged.Handles
                 do
                 {
                     props = new VkLayerProperties[count];
-                    var pin = GCHandle.Alloc(props, GCHandleType.Pinned);
-                    try
-                    {
-                        var arrayPtr = count > 0 ? Marshal.UnsafeAddrOfPinnedArrayElement(props, 0).ToPointer() : (void*) 0;
-                        VkException.Check(vkEnumerateDeviceLayerProperties(this, &count, (VkLayerProperties*) arrayPtr));
-                    }
-                    finally
-                    {
-                        pin.Free();
-                    }
+                    fixed (VkLayerProperties* pptr = props)
+                        VkException.Check(vkEnumerateDeviceLayerProperties(this, &count, pptr));
                 } while (props.Length != count);
+
                 return props;
             }
         }

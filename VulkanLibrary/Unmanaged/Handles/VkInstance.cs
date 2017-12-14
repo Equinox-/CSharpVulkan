@@ -1,4 +1,5 @@
-﻿using System.Runtime.InteropServices;
+﻿using System;
+using System.Runtime.InteropServices;
 
 namespace VulkanLibrary.Unmanaged.Handles
 {
@@ -20,17 +21,10 @@ namespace VulkanLibrary.Unmanaged.Handles
                 do
                 {
                     props = new VkPhysicalDevice[count];
-                    var pin = GCHandle.Alloc(props, GCHandleType.Pinned);
-                    try
-                    {
-                        var arrayPtr = count > 0 ? Marshal.UnsafeAddrOfPinnedArrayElement(props, 0).ToPointer() : (void*) 0;
-                        VkException.Check(vkEnumeratePhysicalDevices(this, &count, (VkPhysicalDevice*) arrayPtr));
-                    }
-                    finally
-                    {
-                        pin.Free();
-                    }
+                    fixed (VkPhysicalDevice* pptr = props)
+                        VkException.Check(vkEnumeratePhysicalDevices(this, &count, pptr));
                 } while (props.Length != count);
+
                 return props;
             }
         }

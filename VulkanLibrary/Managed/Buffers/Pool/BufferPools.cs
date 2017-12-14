@@ -15,7 +15,6 @@ namespace VulkanLibrary.Managed.Buffers.Pool
     {
         // 32MB in 128KB chunks
         private const ulong PoolBlockCount = 256;
-        private const ulong PoolBlockSize = 1024 * 128;
 
         /// <inheritdoc cref="IInstanceOwned.Instance"/>
         public Instance Instance => Device.Instance;
@@ -39,6 +38,17 @@ namespace VulkanLibrary.Managed.Buffers.Pool
                 ((VkBufferCreateFlag[]) Enum.GetValues(typeof(VkBufferCreateFlag)))
                 .Aggregate(0, (a, b) => a | (int) b) + 1;
             _poolsByType = new List<BufferPool>[dev.PhysicalDevice.MemoryTypes.Count, maxUsage, maxCreation];
+        }
+
+        private ulong BlockSizeForUsage(VkBufferUsageFlag flag)
+        {
+            if ((flag & VkBufferUsageFlag.UniformBuffer) != 0)
+                return Extensions.LeastCommonMultiple(128, PhysicalDevice.Limits.MinUniformBufferOffsetAlignment);
+            if ((flag & VkBufferUsageFlag.VertexBuffer) != 0)
+                return 1024 * 128; // 4k VertexTextured
+            if ((flag & VkBufferUsageFlag.IndexBuffer) != 0)
+                return 1024 * 32; // 8k uint indices  
+            return 1024 * 16;
         }
 
         private List<BufferPool> PoolForUsage(MemoryType type, VkBufferUsageFlag usage, VkBufferCreateFlag create)
@@ -95,9 +105,10 @@ namespace VulkanLibrary.Managed.Buffers.Pool
                     }
                 }
             // Create a new pool
-            var blockCount = System.Math.Max((ulong) System.Math.Ceiling(size / (double) PoolBlockSize) * 4UL, PoolBlockCount);
+            var blockSize = BlockSizeForUsage(usage);
+            var blockCount = System.Math.Max((ulong) System.Math.Ceiling(size / (double) blockSize) * 4UL, PoolBlockCount);
             var families = Device.Queues.Select(x => x.FamilyIndex).Distinct().ToArray();
-            var npool = new BufferPool(Device, PoolBlockSize, blockCount, usage, create, type, families.Length > 1 ? families : new uint[0]);
+            var npool = new BufferPool(Device, blockSize, blockCount, usage, create, type, families.Length > 1 ? families : new uint[0]);
             pools.Add(npool);
             return new MemoryHandle(npool, npool.Allocate(size));
         }

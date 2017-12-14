@@ -18,8 +18,8 @@ namespace VulkanLibrary.Managed.Images
 
         public ImagePooled(Device dev, VkFormat format, VkImageType type, VkExtent3D size, uint mipLevels,
             uint arrayLayers, VkImageTiling tiling, VkSampleCountFlag samples, VkImageUsageFlag usage,
-            VkImageLayout layout, VkImageCreateFlag flags, VkSharingMode sharing, uint[] sharedQueueFamily = null) :
-            base(dev, format, type, size, mipLevels, arrayLayers, tiling, samples, usage, layout, flags, sharing,
+            VkImageCreateFlag flags, VkSharingMode sharing = VkSharingMode.Exclusive, uint[] sharedQueueFamily = null) :
+            base(dev, format, type, size, mipLevels, arrayLayers, tiling, samples, usage, flags, sharing,
                 sharedQueueFamily)
         {
             var memReq = MemoryRequirements;

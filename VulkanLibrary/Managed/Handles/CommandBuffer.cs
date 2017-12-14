@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using VulkanLibrary.Unmanaged;
 using VulkanLibrary.Unmanaged.Handles;
@@ -26,7 +27,7 @@ namespace VulkanLibrary.Managed.Handles
                 VkCommandBufferAllocateInfo info = new VkCommandBufferAllocateInfo()
                 {
                     SType = VkStructureType.CommandBufferAllocateInfo,
-                    PNext = (void*) 0,
+                    PNext = IntPtr.Zero,
                     CommandPool = pool.Handle,
                     CommandBufferCount = 1,
                     Level = level
@@ -45,7 +46,7 @@ namespace VulkanLibrary.Managed.Handles
         /// Resets this command buffer
         /// </summary>
         /// <param name="flag">reset flag</param>
-        public void Reset(VkCommandBufferResetFlag flag)
+        public virtual void Reset(VkCommandBufferResetFlag flag)
         {
             AssertValid();
             Handle.ResetCommandBuffer(flag);
@@ -77,7 +78,7 @@ namespace VulkanLibrary.Managed.Handles
                 var info = new VkCommandBufferBeginInfo()
                 {
                     SType = VkStructureType.CommandBufferBeginInfo,
-                    PNext = (void*) 0,
+                    PNext = IntPtr.Zero,
                     Flags = usage,
                     PInheritanceInfo = inheritance.HasValue ? &inherit : (VkCommandBufferInheritanceInfo*) 0
                 };

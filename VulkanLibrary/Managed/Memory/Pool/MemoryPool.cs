@@ -218,6 +218,7 @@ namespace VulkanLibrary.Managed.Memory.Pool
                         _blocks[cid].Free = false;
                     }
                     FreeSpace -= _blocks[cid].Size;
+                    Logging.Allocations?.Trace($"Allocating {(uint)GetHashCode():X8}/{cid:X8} => {_blocks[cid].Size} @ {_blocks[cid].Offset}");
                     return new Memory(cid, _blocks[cid].Offset, _blocks[cid].Size);
                 }
                 cid = _blocks[cid].NextBlock;
@@ -232,6 +233,7 @@ namespace VulkanLibrary.Managed.Memory.Pool
 
         public void Free(Memory handle)
         {
+            Logging.Allocations?.Trace($"Freeing {(uint)GetHashCode():X8}/{handle.BlockId:X8} => {handle.Size} @ {handle.Offset}");
             _blocks[handle.BlockId].Free = true;
             FreeSpace += _blocks[handle.BlockId].Size;
 

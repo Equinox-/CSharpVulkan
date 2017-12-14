@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography.X509Certificates;
+using NLog;
 using VulkanLibrary.Unmanaged;
 using VulkanLibrary.Unmanaged.Handles;
 
@@ -13,6 +14,8 @@ namespace VulkanLibrary.Managed.Handles
 {
     public partial class Instance
     {
+        private static readonly ILogger Log = LogManager.GetCurrentClassLogger();
+        
         public readonly unsafe VkAllocationCallbacks* AllocationCallbacks;
 
         /// <summary>
@@ -27,7 +30,7 @@ namespace VulkanLibrary.Managed.Handles
             ICollection<string> preferredLayers, ICollection<string> requiredLayers)
         {
             var supportedLayers = Vulkan.EnumerateLayerProperties().Select(x => x.LayerNameString).ToHashSet();
-            Console.WriteLine($"Supported instance layers: {string.Join(", ", supportedLayers)}");
+            Log.Info($"Supported instance layers: {string.Join(", ", supportedLayers)}");
             foreach (var requiredLayer in requiredLayers)
                 if (!supportedLayers.Contains(requiredLayer))
                     throw new NotSupportedException($"Layer {requiredLayer} isn't supported");
@@ -36,7 +39,7 @@ namespace VulkanLibrary.Managed.Handles
             var supportedExtensions = Vulkan.EnumerateExtensionProperties(null).Union(
                     layersToUse.SelectMany(Vulkan.EnumerateExtensionProperties)).Select(x => x.ExtensionNameString)
                 .ToHashSet();
-            Console.WriteLine($"Supported instance extensions: {string.Join(", ", supportedExtensions)}");
+            Log.Info($"Supported instance extensions: {string.Join(", ", supportedExtensions)}");
             foreach (var requiredExtension in requiredExtensions)
                 if (!supportedExtensions.Contains(VkExtensionDatabase.Extension(requiredExtension).Extension))
                     throw new NotSupportedException($"Extension {requiredExtension} isn't supported");
@@ -50,8 +53,8 @@ namespace VulkanLibrary.Managed.Handles
                 extensionsToUse.Select(VkExtensionDatabase.Extension).Where(y => y != null).Select(x=>x.ExtensionId).ToHashSet();
             _enableExtensionsByName = extensionsToUse.ToHashSet();
             
-            Console.WriteLine($"Using instance layers: {string.Join(", ", layersToUse)}");
-            Console.WriteLine($"Using instance extensions: {string.Join(", ", extensionsToUse)}");
+            Log.Info($"Using instance layers: {string.Join(", ", layersToUse)}");
+            Log.Info($"Using instance extensions: {string.Join(", ", extensionsToUse)}");
 
             unsafe
             {
@@ -73,7 +76,7 @@ namespace VulkanLibrary.Managed.Handles
                         ApiVersion = new VkVersion(1, 0, 0),
                         PApplicationName = (byte*) 0,
                         PEngineName = (byte*) 0,
-                        PNext = (void*) 0
+                        PNext = IntPtr.Zero
                     };
 
                     var instanceInfo = new VkInstanceCreateInfo()
@@ -89,7 +92,7 @@ namespace VulkanLibrary.Managed.Handles
                             : (byte**) 0,
                         Flags = 0,
                         PApplicationInfo = &appInfo,
-                        PNext = (void*) 0
+                        PNext = IntPtr.Zero
                     };
                     Handle = Vulkan.CreateInstance(&instanceInfo, AllocationCallbacks);
                 }
@@ -143,7 +146,7 @@ namespace VulkanLibrary.Managed.Handles
                 var info = new VkWin32SurfaceCreateInfoKHR()
                 {
                     SType = VkStructureType.Win32SurfaceCreateInfoKhr,
-                    PNext = (void*) 0,
+                    PNext = IntPtr.Zero,
                     Flags = 0,
                     Hwnd = hwnd,
                     Hinstance = hInstance

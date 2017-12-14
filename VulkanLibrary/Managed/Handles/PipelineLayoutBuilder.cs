@@ -60,7 +60,7 @@ namespace VulkanLibrary.Managed.Handles
                     {
                         SType = VkStructureType.PipelineLayoutCreateInfo,
                         Flags = 0,
-                        PNext = (void*) 0,
+                        PNext = IntPtr.Zero,
                         SetLayoutCount = (uint) layouts.Length,
                         PSetLayouts = (VkDescriptorSetLayout*) PinnedArrayAddr(layouts).ToPointer(),
                         PushConstantRangeCount = (uint) push.Length,

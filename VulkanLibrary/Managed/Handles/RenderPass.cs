@@ -20,9 +20,9 @@ namespace VulkanLibrary.Managed.Handles
             Handle = handle;
         }
 
-        public GraphicsPipelineBuilder<uint> PipelineBuilder(uint subpass, PipelineLayout layout)
+        public GraphicsPipelineBuilder PipelineBuilder(uint subpass, PipelineLayout layout)
         {
-            return new GraphicsPipelineBuilder<uint>(this, subpass, layout, (x) => x);
+            return new GraphicsPipelineBuilder(this, subpass, layout);
         }
 
         public FramebufferBuilder<uint> FramebufferBuilder(VkExtent2D size, uint layers = 1)

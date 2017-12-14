@@ -127,7 +127,7 @@ namespace VulkanLibrary.Managed.Memory.Mapped
                 {
                     SType = VkStructureType.MappedMemoryRange,
                     Memory = Backing.Handle,
-                    PNext = (void*) 0,
+                    PNext = IntPtr.Zero,
                     Offset = offset,
                     Size = count
                 };

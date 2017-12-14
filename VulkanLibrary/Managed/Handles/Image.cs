@@ -33,7 +33,8 @@ namespace VulkanLibrary.Managed.Handles
         {
             get
             {
-                AssertValid();
+                base.AssertValid();
+                Device.AssertValid();
                 if (!Device.ExtensionEnabled(VkExtension.KhrGetMemoryRequirements2))
                 {
                     var requirements = Device.Handle.GetImageMemoryRequirements(Handle);
@@ -48,12 +49,12 @@ namespace VulkanLibrary.Managed.Handles
                     var dedInfo = new VkMemoryDedicatedRequirementsKHR()
                     {
                         SType = VkStructureType.MemoryDedicatedRequirementsKhr,
-                        PNext = (void*) 0
+                        PNext = IntPtr.Zero
                     };
                     var memReq2 = new VkImageMemoryRequirementsInfo2KHR()
                     {
                         SType = VkStructureType.ImageMemoryRequirementsInfo2Khr,
-                        PNext = useDedicated ? &dedInfo : (void*) 0,
+                        PNext = useDedicated ? new IntPtr(&dedInfo) : IntPtr.Zero,
                         Image = Handle
                     };
                     var reqs2 = Device.Handle.GetImageMemoryRequirements2KHR(&memReq2);
@@ -74,8 +75,8 @@ namespace VulkanLibrary.Managed.Handles
         }
 
         public Image(Device dev, VkFormat format, VkImageType type, VkExtent3D size, uint mipLevels, uint arrayLayers,
-            VkImageTiling tiling, VkSampleCountFlag samples, VkImageUsageFlag usage,
-            VkImageLayout layout, VkImageCreateFlag flags, VkSharingMode sharing = VkSharingMode.Exclusive,
+            VkImageTiling tiling, VkSampleCountFlag samples, VkImageUsageFlag usage, VkImageCreateFlag flags,
+            VkSharingMode sharing = VkSharingMode.Exclusive,
             uint[] sharedQueueFamily = null)
         {
             Device = dev;
@@ -101,8 +102,8 @@ namespace VulkanLibrary.Managed.Handles
                         ArrayLayers = arrayLayers,
                         MipLevels = mipLevels,
                         Flags = flags,
-                        InitialLayout = layout,
-                        PNext = (void*) 0,
+                        InitialLayout = VkImageLayout.Undefined,
+                        PNext = IntPtr.Zero,
                         PQueueFamilyIndices = sharedPtr,
                         SharingMode = sharing,
                         Samples = samples,

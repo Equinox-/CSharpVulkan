@@ -6,11 +6,18 @@ using VulkanLibrary.Unmanaged;
 
 namespace VulkanLibrary.Managed.Buffers
 {
-    public abstract class ValueBuffer<T> : PooledBuffer where T : struct
+    public interface IValueBuffer
+    {
+        void Commit(Action callback = null);
+        void CommitEverything(Action callback = null);
+        void Read(Action callback = null);
+    }
+    
+    public abstract class ValueBuffer<T> : PooledBuffer, IValueBuffer where T : struct
     {
         private uint _dirtyMin, _dirtyMax;
         private readonly ulong _itemSize;
-        private readonly T[] _data;
+        public readonly T[] _data;
 
         /// <summary>
         /// Number of elements in this buffer
@@ -49,13 +56,13 @@ namespace VulkanLibrary.Managed.Buffers
             }
         }
 
-        protected abstract unsafe void WriteGpuMemory(void* ptrCpu, ulong gpuOffset, ulong countBytes);
-        protected abstract unsafe void ReadGpuMemory(void* ptrCpu, ulong gpuOffset, ulong countBytes);
+        protected abstract unsafe void WriteGpuMemory(void* ptrCpu, ulong gpuOffset, ulong countBytes, Action callback);
+        protected abstract unsafe void ReadGpuMemory(void* ptrCpu, ulong gpuOffset, ulong countBytes, Action callback);
 
         /// <summary>
         /// Writes this buffer to the GPU
         /// </summary>
-        public void Commit()
+        public void Commit(Action callback = null)
         {
             uint min, max;
             lock (this)
@@ -71,13 +78,38 @@ namespace VulkanLibrary.Managed.Buffers
             var addrCount = _itemSize * (max - min);
             unsafe
             {
-                var handle = GCHandle.Alloc(_data);
+                var handle = GCHandle.Alloc(_data, GCHandleType.Pinned);
                 try
                 {
                     var ptrCpu =
                         new UIntPtr((ulong) Marshal.UnsafeAddrOfPinnedArrayElement(_data, 0).ToInt64() + addrMin)
                             .ToPointer();
-                    WriteGpuMemory(ptrCpu, addrMin, addrCount);
+                    WriteGpuMemory(ptrCpu, addrMin, addrCount, callback);
+                }
+                finally
+                {
+                    handle.Free();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Flushes this entire buffer to the GPU
+        /// </summary>
+        /// <param name="callback"></param>
+        public void CommitEverything(Action callback = null)
+        {
+            var addrMin = 0UL;
+            var addrCount = _itemSize * Length;
+            unsafe
+            {
+                var handle = GCHandle.Alloc(_data, GCHandleType.Pinned);
+                try
+                {
+                    var ptrCpu =
+                        new UIntPtr((ulong) Marshal.UnsafeAddrOfPinnedArrayElement(_data, 0).ToInt64() + addrMin)
+                            .ToPointer();
+                    WriteGpuMemory(ptrCpu, addrMin, addrCount, callback);
                 }
                 finally
                 {
@@ -89,18 +121,18 @@ namespace VulkanLibrary.Managed.Buffers
         /// <summary>
         /// Reads this buffer from the GPU
         /// </summary>
-        public void Read()
+        public void Read(Action callback)
         {
             unsafe
             {
-                var handle = GCHandle.Alloc(_data);
+                var handle = GCHandle.Alloc(_data, GCHandleType.Pinned);
                 try
                 {
                     var ptrCpu =
                         new UIntPtr((ulong) Marshal.UnsafeAddrOfPinnedArrayElement(_data, 0).ToInt64())
                             .ToPointer();
                     var size = _itemSize * (ulong) _data.LongLength;
-                    ReadGpuMemory(ptrCpu, 0, size);
+                    ReadGpuMemory(ptrCpu, 0, size, callback);
                 }
                 finally
                 {

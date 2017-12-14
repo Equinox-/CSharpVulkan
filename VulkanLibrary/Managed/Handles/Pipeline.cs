@@ -7,10 +7,13 @@ namespace VulkanLibrary.Managed.Handles
     {
         public VkPipelineBindPoint PipelineType { get; }
         
-        public Pipeline(Device dev, VkPipelineBindPoint type, VkPipeline pipeline)
+        public PipelineLayout Layout { get; }
+        
+        public Pipeline(Device dev, VkPipelineBindPoint type, PipelineLayout layout, VkPipeline pipeline)
         {
             PipelineType = type;
             Device = dev;
+            Layout = layout;
             Handle = pipeline;
         }
     }

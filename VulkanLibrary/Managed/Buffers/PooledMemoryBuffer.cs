@@ -24,6 +24,7 @@ namespace VulkanLibrary.Managed.Buffers
             var reqs = MemoryRequirements.Union(MemoryRequirements, req);
             var type = reqs.FindMemoryType(PhysicalDevice);
             _memory = Device.MemoryPool.Allocate(type, pool, reqs.TypeRequirements.Size);
+            BindMemory(_memory.BackingMemory, _memory.Offset);
         }
 
         public override void AssertValid()

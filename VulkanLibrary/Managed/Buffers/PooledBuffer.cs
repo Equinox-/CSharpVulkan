@@ -4,10 +4,11 @@ using VulkanLibrary.Managed.Handles;
 using VulkanLibrary.Managed.Memory.Pool;
 using VulkanLibrary.Managed.Utilities;
 using VulkanLibrary.Unmanaged;
+using VulkanLibrary.Unmanaged.Handles;
 
 namespace VulkanLibrary.Managed.Buffers
 {
-    public class PooledBuffer : VulkanHandle<BufferPools.MemoryHandle>, IDeviceOwned, IPooledMemory
+    public class PooledBuffer : VulkanHandle<BufferPools.MemoryHandle>, IBindableBuffer, IDeviceOwned, IPooledMemory
     {
         /// <inheritdoc/>
         public Instance Instance => Handle.BackingBuffer?.Instance;
@@ -20,11 +21,13 @@ namespace VulkanLibrary.Managed.Buffers
         /// </summary>
         public PooledMemoryBuffer BackingBuffer => Handle.BackingBuffer;
 
-        /// <summary>
-        /// 
-        /// </summary>
+        /// <inheritdoc />
         public ulong Size => Handle.Size;
 
+        /// <inheritdoc />
+        public VkBuffer BindingHandle => BackingBuffer.Handle;
+
+        /// <inheritdoc />
         public ulong Offset => Handle.Offset;
 
         public PooledBuffer(Device dev, MemoryType memType, ulong capacity, VkBufferUsageFlag usage, VkBufferCreateFlag create = 0)

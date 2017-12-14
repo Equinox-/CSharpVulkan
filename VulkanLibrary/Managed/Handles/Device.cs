@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using NLog;
 using VulkanLibrary.Managed.Buffers.Pool;
 using VulkanLibrary.Managed.Memory.Pool;
 using VulkanLibrary.Unmanaged;
@@ -12,6 +13,8 @@ namespace VulkanLibrary.Managed.Handles
 {
     public partial class Device
     {
+        private static readonly ILogger Log = LogManager.GetCurrentClassLogger();
+
         private readonly Queue[][] _queues;
 
         /// <summary>
@@ -39,6 +42,11 @@ namespace VulkanLibrary.Managed.Handles
         /// Gets all queues on this device
         /// </summary>
         public IReadOnlyList<Queue> Queues { get; }
+
+        /// <summary>
+        /// Features of this device
+        /// </summary>
+        public VkPhysicalDeviceFeatures Features { get; }
 
         private readonly HashSet<VkExtension> _enabledExtensions;
         private readonly HashSet<string> _enableExtensionsByName;
@@ -76,7 +84,7 @@ namespace VulkanLibrary.Managed.Handles
                     $"Ext {ext.Extension} type {ext.Type} doesn't conform");
             var supportedLayers =
                 physDevice.Handle.EnumerateLayerProperties().Select(x => x.LayerNameString).ToHashSet();
-            Console.WriteLine($"Supported device layers: {string.Join(", ", supportedLayers)}");
+            Log.Info($"Supported device layers: {string.Join(", ", supportedLayers)}");
             foreach (var requiredLayer in requiredLayers)
                 if (!supportedLayers.Contains(requiredLayer))
                     throw new NotSupportedException($"Layer {requiredLayer} isn't supported");
@@ -85,7 +93,7 @@ namespace VulkanLibrary.Managed.Handles
             var supportedExtensions = physDevice.Handle.EnumerateExtensionProperties(null).Union(
                     layersToUse.SelectMany(physDevice.Handle.EnumerateExtensionProperties))
                 .Select(x => x.ExtensionNameString).ToHashSet();
-            Console.WriteLine($"Supported device extensions: {string.Join(", ", supportedExtensions)}");
+            Log.Info($"Supported device extensions: {string.Join(", ", supportedExtensions)}");
             foreach (var requiredExtension in requiredExtensions)
                 if (!supportedExtensions.Contains(VkExtensionDatabase.Extension(requiredExtension).Extension))
                     throw new NotSupportedException($"Extension {requiredExtension} isn't supported");
@@ -99,8 +107,8 @@ namespace VulkanLibrary.Managed.Handles
                     .ToHashSet();
             _enableExtensionsByName = extensionsToUse.ToHashSet();
 
-            Console.WriteLine($"Using device layers: {string.Join(", ", layersToUse)}");
-            Console.WriteLine($"Using device extensions: {string.Join(", ", extensionsToUse)}");
+            Log.Info($"Using device layers: {string.Join(", ", layersToUse)}");
+            Log.Info($"Using device extensions: {string.Join(", ", extensionsToUse)}");
 
             var pins = new List<GCHandle>();
             var queueOptionsRedirect = new int[queueOptions.Length];
@@ -131,7 +139,7 @@ namespace VulkanLibrary.Managed.Handles
                             {
                                 SType = VkStructureType.DeviceQueueCreateInfo,
                                 Flags = 0,
-                                PNext = (void*) 0,
+                                PNext = IntPtr.Zero,
                                 QueueFamilyIndex = kv.Key,
                                 QueueCount = (uint) block.Length,
                                 PQueuePriorities = (float*) Marshal.UnsafeAddrOfPinnedArrayElement(block, 0).ToPointer()
@@ -156,6 +164,7 @@ namespace VulkanLibrary.Managed.Handles
                         fixed (VkDeviceQueueCreateInfo* queueOptionsPtr = queueCreateInfo)
                         {
                             var desiredFeatures = ChooseDeviceFeatures();
+                            Features = desiredFeatures;
                             var deviceCreateInfo = new VkDeviceCreateInfo()
                             {
                                 SType = VkStructureType.DeviceCreateInfo,
@@ -237,7 +246,8 @@ namespace VulkanLibrary.Managed.Handles
                 ShaderClipDistance = true,
                 ShaderCullDistance = true,
                 ShaderFloat64 = true,
-                InheritedQueries = true
+                InheritedQueries = true,
+                SamplerAnisotropy = true
             };
         }
 
@@ -288,6 +298,17 @@ namespace VulkanLibrary.Managed.Handles
         public PipelineLayoutBuilder PipelineLayoutBuilder()
         {
             return new PipelineLayoutBuilder(this);
+        }
+
+        /// <summary>
+        /// Starts building a new descriptor set layout
+        /// </summary>
+        /// <param name="flags">Creation flags</param>
+        /// <returns>Builder</returns>
+        public DescriptorSetLayoutBuilder DescriptorSetLayoutBuilder(
+            VkDescriptorSetLayoutCreateFlag flags = VkDescriptorSetLayoutCreateFlag.None)
+        {
+            return new DescriptorSetLayoutBuilder(this, flags);
         }
 
         public ShaderModule LoadShader(byte[] code)

@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using VulkanLibrary.Unmanaged;
 
@@ -14,7 +15,7 @@ namespace VulkanLibrary.Managed.Handles
                 var info = new VkCommandPoolCreateInfo()
                 {
                     SType = VkStructureType.CommandPoolCreateInfo,
-                    PNext = (void*) 0,
+                    PNext = IntPtr.Zero,
                     Flags = flags,
                     QueueFamilyIndex = queueFamily
                 };

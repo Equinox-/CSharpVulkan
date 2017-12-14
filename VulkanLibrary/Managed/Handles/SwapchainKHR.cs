@@ -74,7 +74,7 @@ namespace VulkanLibrary.Managed.Handles
                     var info = new VkSwapchainCreateInfoKHR()
                     {
                         SType = VkStructureType.SwapchainCreateInfoKhr,
-                        PNext = default(void*),
+                        PNext =  IntPtr.Zero,
                         Flags = 0, // reserved VkSwapchainCreateFlagBitsKHR
                         Surface = surface.Handle,
                         MinImageCount = minImageCount,

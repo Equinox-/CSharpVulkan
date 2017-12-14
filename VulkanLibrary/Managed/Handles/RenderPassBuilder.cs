@@ -310,7 +310,7 @@ namespace VulkanLibrary.Managed.Handles
                         {
                             SType = VkStructureType.RenderPassCreateInfo,
                             Flags = 0,
-                            PNext = (void*) 0,
+                            PNext = IntPtr.Zero,
                             AttachmentCount = (uint) attachmentDesc.Length,
                             PAttachments = attachPtr,
                             SubpassCount = (uint) passDesc.Length,

@@ -2,10 +2,11 @@
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <LangVersion>7.2</LangVersion>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x64'" />
   <ItemGroup>
-    <Folder Include="Generated" />
-    <Folder Include="Generated" />
-    <Folder Include="Managed\Image" />
+    <PackageReference Include="NLog" Version="4.4.12" />
+    <PackageReference Include="System.Memory" Version="4.4.0-preview2-25405-01" />
   </ItemGroup>
 </Project>

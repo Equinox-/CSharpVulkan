@@ -41,7 +41,7 @@ namespace VulkanLibrary.Managed.Handles
                     {
                         SType = VkStructureType.FramebufferCreateInfo,
                         Flags = 0,
-                        PNext = (void*) 0,
+                        PNext = IntPtr.Zero,
                         RenderPass = pass.Handle,
                         Width = size.Width,
                         Height = size.Height,
