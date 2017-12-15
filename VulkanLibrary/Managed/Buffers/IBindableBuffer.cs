@@ -1,10 +1,11 @@
-﻿using VulkanLibrary.Unmanaged.Handles;
+﻿using VulkanLibrary.Managed.Handles;
+using VulkanLibrary.Unmanaged.Handles;
 
 namespace VulkanLibrary.Managed.Buffers
 {
     public interface IBindableBuffer
     {
-        VkBuffer BindingHandle { get; }
+        Buffer BindingHandle { get; }
         ulong Offset { get; }
     }
 }

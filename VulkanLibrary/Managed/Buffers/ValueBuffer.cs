@@ -10,6 +10,7 @@ namespace VulkanLibrary.Managed.Buffers
     {
         void Commit(Action callback = null);
         void CommitEverything(Action callback = null);
+        void CommitRange(uint min, uint max, Action callback = null);
         void Read(Action callback = null);
     }
     
@@ -60,8 +61,9 @@ namespace VulkanLibrary.Managed.Buffers
         protected abstract unsafe void ReadGpuMemory(void* ptrCpu, ulong gpuOffset, ulong countBytes, Action callback);
 
         /// <summary>
-        /// Writes this buffer to the GPU
+        /// Flushes the dirty region of the buffer to the GPU
         /// </summary>
+        /// <param name="callback">flush finished</param>
         public void Commit(Action callback = null)
         {
             uint min, max;
@@ -72,6 +74,31 @@ namespace VulkanLibrary.Managed.Buffers
                 max = _dirtyMax;
                 _dirtyMax = 0;
             }
+            CommitRange(min, max, callback);
+        }
+
+        /// <summary>
+        /// Flushes this entire buffer to the GPU
+        /// </summary>
+        /// <param name="callback">flush finished</param>
+        public void CommitEverything(Action callback = null)
+        {
+            lock (this)
+            {
+                _dirtyMin = uint.MaxValue;
+                _dirtyMax = 0;
+            }
+            CommitRange(0, Length, callback);
+        }
+
+        /// <summary>
+        /// Flushes a portion of this buffer to the GPU
+        /// </summary>
+        /// <param name="min">Minimum index, inclusive</param>
+        /// <param name="max">Maximum index, exclusive</param>
+        /// <param name="callback">flush finished</param>
+        public void CommitRange(uint min, uint max, Action callback = null)
+        {
             if (min >= max)
                 return;
             var addrMin = _itemSize * min;
@@ -92,32 +119,7 @@ namespace VulkanLibrary.Managed.Buffers
                 }
             }
         }
-
-        /// <summary>
-        /// Flushes this entire buffer to the GPU
-        /// </summary>
-        /// <param name="callback"></param>
-        public void CommitEverything(Action callback = null)
-        {
-            var addrMin = 0UL;
-            var addrCount = _itemSize * Length;
-            unsafe
-            {
-                var handle = GCHandle.Alloc(_data, GCHandleType.Pinned);
-                try
-                {
-                    var ptrCpu =
-                        new UIntPtr((ulong) Marshal.UnsafeAddrOfPinnedArrayElement(_data, 0).ToInt64() + addrMin)
-                            .ToPointer();
-                    WriteGpuMemory(ptrCpu, addrMin, addrCount, callback);
-                }
-                finally
-                {
-                    handle.Free();
-                }
-            }
-        }
-
+        
         /// <summary>
         /// Reads this buffer from the GPU
         /// </summary>

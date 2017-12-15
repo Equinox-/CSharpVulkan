@@ -89,6 +89,7 @@ namespace VulkanLibrary.Managed.Buffers.Pool
         /// <param name="create">Buffer create flags</param>
         /// <param name="size">Size of buffer</param>
         /// <returns>Memory handle</returns>
+        [MethodImpl(MethodImplOptions.Synchronized)] // TODO better sync with rwlock
         public MemoryHandle Allocate(MemoryType type, VkBufferUsageFlag usage, VkBufferCreateFlag create, ulong size)
         {
             var pools = PoolForUsage(type, usage, create);

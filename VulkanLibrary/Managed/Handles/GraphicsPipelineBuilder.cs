@@ -388,11 +388,17 @@ namespace VulkanLibrary.Managed.Handles
         {
             var stages = _stages.ToArray();
             var vertexBindings = new VkVertexInputBindingDescription[_vertexBindingDescriptions.Count];
-            foreach (var kv in _vertexBindingDescriptions)
-                vertexBindings[kv.Key] = kv.Value;
+            {
+                var i = 0;
+                foreach (var kv in _vertexBindingDescriptions)
+                    vertexBindings[i++] = kv.Value;
+            }
             var attributeBindings = new VkVertexInputAttributeDescription[_vertexAttributeDescriptions.Count];
-            foreach (var kv in _vertexAttributeDescriptions)
-                attributeBindings[kv.Key] = kv.Value;
+            {
+                var i = 0;
+                foreach (var kv in _vertexAttributeDescriptions)
+                    attributeBindings[i++] = kv.Value;
+            }
             var blendStates = new VkPipelineColorBlendAttachmentState[_blendAttachmentStates.Count];
             foreach (var kv in _blendAttachmentStates)
                 blendStates[kv.Key] = kv.Value;

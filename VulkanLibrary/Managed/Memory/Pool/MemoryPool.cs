@@ -108,7 +108,7 @@ namespace VulkanLibrary.Managed.Memory.Pool
         {
             return (input | _alignMask) + 1L;
         }
-
+        
         private uint FindFreeBlockHeader()
         {
             if (_freeBlockPtr.Count > 0)
@@ -138,6 +138,7 @@ namespace VulkanLibrary.Managed.Memory.Pool
                 _freeBlockPtr.Push(index);
         }
 
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public void Resize(ulong newSize)
         {
             if (newSize == Capacity)
@@ -181,6 +182,7 @@ namespace VulkanLibrary.Managed.Memory.Pool
             return s.ToString();
         }
 
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public Memory Allocate(ulong size)
         {
             size = AlignValue(size);
@@ -231,6 +233,7 @@ namespace VulkanLibrary.Managed.Memory.Pool
             return id == NullBlockHeader ? null : new MemoryBlock?(_blocks[id]);
         }
 
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public void Free(Memory handle)
         {
             Logging.Allocations?.Trace($"Freeing {(uint)GetHashCode():X8}/{handle.BlockId:X8} => {handle.Size} @ {handle.Offset}");

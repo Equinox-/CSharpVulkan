@@ -28,7 +28,7 @@ namespace VulkanLibrary.Managed.Buffers
         {
             _deferredFlusher = flush;
             _targetQueueFamily = targetQueueFamily;
-            Commit();
+            CommitEverything();
         }
         
         public ValueBufferGpu(DeferredTransfer flush, VkBufferUsageFlag usage,
@@ -42,7 +42,7 @@ namespace VulkanLibrary.Managed.Buffers
 
         protected override unsafe void WriteGpuMemory(void* ptrCpu, ulong gpuOffset, ulong countBytes, Action callback)
         {
-            _deferredFlusher.Transfer(BackingBuffer, gpuOffset + Offset, ptrCpu, countBytes, _targetQueueFamily, callback);
+            _deferredFlusher.Transfer(this, gpuOffset, ptrCpu, countBytes, _targetQueueFamily, callback);
         }
 
         protected override unsafe void ReadGpuMemory(void* ptrCpu, ulong gpuOffset, ulong countBytes, Action callback)

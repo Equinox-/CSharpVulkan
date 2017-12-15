@@ -25,7 +25,7 @@ namespace VulkanLibrary.Managed.Buffers
         public ulong Size => Handle.Size;
 
         /// <inheritdoc />
-        public VkBuffer BindingHandle => BackingBuffer.Handle;
+        public Buffer BindingHandle => BackingBuffer;
 
         /// <inheritdoc />
         public ulong Offset => Handle.Offset;

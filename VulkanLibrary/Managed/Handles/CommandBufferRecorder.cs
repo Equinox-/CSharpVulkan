@@ -232,7 +232,7 @@ namespace VulkanLibrary.Managed.Handles
         /// <returns>this</returns>
         public CommandBufferRecorder<T> BindVertexBuffer(uint binding, IBindableBuffer buffer, ulong offset = 0)
         {
-            var bh = buffer.BindingHandle;
+            var bh = buffer.BindingHandle.Handle;
             offset += buffer.Offset;
             unsafe
             {
@@ -249,7 +249,7 @@ namespace VulkanLibrary.Managed.Handles
         /// <returns>this</returns>
         public CommandBufferRecorder<T> BindIndexBuffer(IBindableBuffer buffer, VkIndexType type, ulong offset = 0)
         {
-            var bh = buffer.BindingHandle;
+            var bh = buffer.BindingHandle.Handle;
             offset += buffer.Offset;
             VkCommandBuffer.vkCmdBindIndexBuffer(Handle, bh, offset, type);
             return this;

@@ -129,7 +129,7 @@ namespace VulkanLibrary.Managed.Handles
             return true;
         }
 
-        public VkBuffer BindingHandle => Handle;
+        public Buffer BindingHandle => this;
         public ulong Offset => 0;
     }
 }

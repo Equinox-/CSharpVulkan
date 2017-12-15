@@ -64,6 +64,7 @@ namespace VulkanLibrary.Managed.Buffers.Pool
         /// <param name="size">Size</param>
         /// <returns>memory handle</returns>
         /// <exception cref="OutOfMemoryException">Not enough space in pool</exception>
+        [MethodImpl(MethodImplOptions.Synchronized)] // TODO better sync with rwlock
         public MemoryHandle Allocate(ulong size)
         {
             return new MemoryHandle(this, _pool.Allocate(size));
@@ -73,6 +74,7 @@ namespace VulkanLibrary.Managed.Buffers.Pool
         /// Frees the given memory handle
         /// </summary>
         /// <param name="handle">handle</param>
+        [MethodImpl(MethodImplOptions.Synchronized)] // TODO better sync with rwlock
         public void Free(MemoryHandle handle)
         {
             handle.FreeFor(this);
