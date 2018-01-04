@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using System;
+using System.Diagnostics;
 using VulkanLibrary.Managed.Handles;
 using VulkanLibrary.Unmanaged;
 using VulkanLibrary.Unmanaged.Handles;
@@ -10,7 +11,7 @@ namespace VulkanLibrary.Managed.Images
         /// <summary>
         /// Swapchain this image belongs to
         /// </summary>
-        public SwapchainKHR Swapchain { get; }
+        public SwapchainKHR Swapchain { get; private set; }
         
         public SwapchainImage(SwapchainKHR swapchain, VkImage handle)
             : base(swapchain.Device, handle, swapchain.Format,
@@ -23,6 +24,13 @@ namespace VulkanLibrary.Managed.Images
         {
             base.AssertValid();
             Swapchain.AssertValid();
+        }
+
+        protected override void Free()
+        {
+            // Do _not_ call base.Free().  Swapchain images are disposed automatically.
+            Handle = VkImage.Null;
+            Swapchain = null;
         }
     }
 }

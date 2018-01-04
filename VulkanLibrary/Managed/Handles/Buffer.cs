@@ -8,7 +8,7 @@ using VulkanLibrary.Unmanaged.Handles;
 
 namespace VulkanLibrary.Managed.Handles
 {
-    public partial class Buffer : IBindableBuffer, IDedicatedMemoryOwner
+    public partial class Buffer : IPinnableBindableBuffer, IDedicatedMemoryOwner
     {
         /// <summary>
         /// Size of this buffer

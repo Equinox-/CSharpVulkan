@@ -2,19 +2,47 @@
 using System.Diagnostics;
 using System.Runtime.ConstrainedExecution;
 using System.Threading;
+using VulkanLibrary.Unmanaged;
 
 namespace VulkanLibrary.Managed.Utilities
 {
     /// <summary>
     /// Represents a RAII handle to a Vulkan resource.
     /// </summary>
-    public abstract class VulkanHandle : CriticalFinalizerObject, IDisposable
+    public abstract class VulkanHandle : CriticalFinalizerObject, IDisposable, IPinnable
     {
         private enum LifeState : int
         {
             Alive,
             Dying,
             Dead
+        }
+
+
+        protected VulkanHandle()
+        {
+            IncreasePins();
+        }
+
+        private int _pins;
+
+        /// <inheritdoc />
+        public DisposePin PinUsing()
+        {
+            return new DisposePin(this);
+        }
+
+        /// <inheritdoc />
+        public void IncreasePins()
+        {
+            Interlocked.Increment(ref _pins);
+        }
+
+        /// <inheritdoc />
+        public void DecreasePins()
+        {
+            if (Interlocked.Decrement(ref _pins) == 0)
+                ForceDispose(true);
         }
 
         /// <summary>
@@ -27,19 +55,34 @@ namespace VulkanLibrary.Managed.Utilities
         /// </summary>
         public bool IsAllocated => _disposed == (int) LifeState.Alive;
 
+        private int _hasUserDisposed;
+
         /// <inheritdoc/>
         public void Dispose()
         {
-            Debug.Assert(_disposed == (int) LifeState.Alive, $"Resource {GetType()} was already disposed");
+            _hasUserDisposed = 1;
+            if (Interlocked.Decrement(ref _pins) == 0)
+                ForceDispose();
+        }
+
+        private void ForceDispose(bool supressErrors = false)
+        {
+            Debug.Assert(_hasUserDisposed != 0,
+                "Destroying object the user didn't mark as disposed.  Someone unpinned twice.");
+            Debug.Assert(supressErrors || _disposed == (int) LifeState.Alive,
+                $"Resource {GetType()} was already disposed");
             if (_disposed != (int) LifeState.Alive)
                 return;
 
             // If current state is alive, set to dying and proceed.
-            if (Interlocked.CompareExchange(ref _disposed, (int) LifeState.Dying, (int) LifeState.Alive) != (int) LifeState.Alive)
+            if (Interlocked.CompareExchange(ref _disposed, (int) LifeState.Dying, (int) LifeState.Alive) !=
+                (int) LifeState.Alive)
             {
-                Debug.Fail($"Resource {GetType()} was already disposed");
+                if (!supressErrors)
+                    Debug.Fail($"Resource {GetType()} was already disposed");
                 return;
             }
+
             Free();
             GC.SuppressFinalize(this);
             _disposed = (int) LifeState.Dead;
@@ -65,16 +108,17 @@ namespace VulkanLibrary.Managed.Utilities
         {
             if (_disposed != (int) LifeState.Alive)
                 return;
-            
+
             // If current state is alive, set to dying and proceed.
-            if (Interlocked.CompareExchange(ref _disposed, (int) LifeState.Dying, (int) LifeState.Alive) != (int) LifeState.Alive)
+            if (Interlocked.CompareExchange(ref _disposed, (int) LifeState.Dying, (int) LifeState.Alive) !=
+                (int) LifeState.Alive)
                 return;
             Free();
             _disposed = (int) LifeState.Dead;
             Debug.Fail($"Resource {GetType()} was leaked");
         }
     }
-    
+
     /// <inheritdoc />
     /// <typeparam name="T">Type of native handle</typeparam>
     public abstract class VulkanHandle<T> : VulkanHandle

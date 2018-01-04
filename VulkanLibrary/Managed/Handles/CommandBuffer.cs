@@ -87,11 +87,11 @@ namespace VulkanLibrary.Managed.Handles
             }
         }
 
-        public CommandBufferRecorder<CommandBuffer> RecordCommands(VkCommandBufferUsageFlag usage,
+        public CommandBufferRecorder RecordCommands(VkCommandBufferUsageFlag usage,
             VkCommandBufferInheritanceInfo? inheritance = null)
         {
             BeginRecording(usage, inheritance);
-            return new CommandBufferRecorder<CommandBuffer>(this);
+            return new CommandBufferRecorder(this);
         }
 
         internal void FinishBuild()

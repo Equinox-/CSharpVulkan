@@ -96,7 +96,12 @@ namespace VulkanLibrary.Managed.Handles
                     };
                     _info = info;
                     Handle = Device.Handle.CreateSwapchainKHR(&info, Instance.AllocationCallbacks);
-                    oldSwapchain?.Dispose();
+                    if (oldSwapchain != null)
+                    {
+                        foreach (var img in oldSwapchain._swapchainImages)
+                            img.Dispose();
+                        oldSwapchain.Dispose();
+                    }
                 }
                 finally
                 {

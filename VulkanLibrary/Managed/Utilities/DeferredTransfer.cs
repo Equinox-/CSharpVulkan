@@ -1,6 +1,10 @@
-﻿using System;
+﻿// #define DEFERRED_ERROR_TRACING
+
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using NLog;
 using VulkanLibrary.Managed.Buffers;
@@ -27,32 +31,69 @@ namespace VulkanLibrary.Managed.Utilities
 
         private abstract class PendingFlush
         {
-            public BufferPools.MemoryHandle Handle;
-            public uint OwnerQueueFamily;
-            public Action Callback;
+            private BufferPools.MemoryHandle _handle;
 
-            protected PendingFlush()
+            public BufferPools.MemoryHandle Handle => _handle;
+            public readonly uint OwnerQueueFamily;
+            public readonly Action Callback;
+
+            protected PendingFlush(BufferPools.MemoryHandle src, uint queue, Action callback)
             {
-                Finished = () =>
-                {
-                    Callback?.Invoke();
-                    Handle.Free();
-                };
+                _handle = src;
+                OwnerQueueFamily = queue;
+                Callback = callback;
             }
 
-            public readonly Action Finished;
+            public virtual void Finished()
+            {
+                Callback?.Invoke();
+                _handle.Free();
+            }
+
+            #if DEFERRED_ERROR_TRACING
+            public readonly string Allocated = Environment.StackTrace;
+            #endif
         }
 
         private class PendingFlushBuffer : PendingFlush
         {
-            public IBindableBuffer Destination;
-            public ulong DestinationOffset, Count;
+            public readonly IPinnableBindableBuffer Destination;
+            public readonly ulong DestinationOffset, Count;
+
+            public PendingFlushBuffer(BufferPools.MemoryHandle src, uint queue, Action callback, IPinnableBindableBuffer dst,
+                ulong dstOffset, ulong dstCount) : base(src, queue, callback)
+            {
+                Destination = dst;
+                DestinationOffset = dstOffset;
+                Count = dstCount;
+                Destination.IncreasePins();
+            }
+
+            public override void Finished()
+            {
+                base.Finished();
+                Destination.DecreasePins();
+            }
         }
 
         private class PendingFlushImage : PendingFlush
         {
-            public Image Destination;
-            public VkBufferImageCopy CopyData;
+            public readonly Image Destination;
+            public readonly VkBufferImageCopy CopyData;
+
+            public PendingFlushImage(BufferPools.MemoryHandle src, uint queue, Action callback, Image dst,
+                VkBufferImageCopy copyDesc) : base(src, queue, callback)
+            {
+                Destination = dst;
+                CopyData = copyDesc;
+                Destination.IncreasePins();
+            }
+
+            public override void Finished()
+            {
+                base.Finished();
+                Destination.DecreasePins();
+            }
         }
 
         private readonly MemoryType _transferType;
@@ -110,38 +151,41 @@ namespace VulkanLibrary.Managed.Utilities
                     switch (temp)
                     {
                         case PendingFlushBuffer pendingBuffer:
+                        {
                             _log.Trace(
                                 $"Transferring {pendingBuffer.Count} bytes to {pendingBuffer.Destination}");
-                            buffer.RecordCommands(VkCommandBufferUsageFlag.OneTimeSubmit)
-                                .BufferMemoryBarrier(pendingBuffer.Destination.BindingHandle,
-                                    VkAccessFlag.AllExceptExt,
-                                    pendingBuffer.OwnerQueueFamily,
-                                    VkAccessFlag.AllExceptExt, _transferQueue.FamilyIndex,
-                                    VkPipelineStageFlag.AllCommands, VkPipelineStageFlag.AllCommands,
-                                    VkDependencyFlag.None,
-                                    pendingBuffer.Destination.Offset + pendingBuffer.DestinationOffset,
-                                    pendingBuffer.Count)
-                                .CopyBuffer(pendingBuffer.Handle.BackingBuffer,
-                                    pendingBuffer.Destination.BindingHandle,
-                                    new VkBufferCopy
-                                    {
-                                        SrcOffset = pendingBuffer.Handle.Offset,
-                                        DstOffset = pendingBuffer.Destination.Offset +
-                                                    pendingBuffer.DestinationOffset,
-                                        Size = pendingBuffer.Count
-                                    })
-                                .BufferMemoryBarrier(pendingBuffer.Destination.BindingHandle,
-                                    VkAccessFlag.AllExceptExt,
-                                    _transferQueue.FamilyIndex,
-                                    VkAccessFlag.AllExceptExt,
-                                    pendingBuffer.OwnerQueueFamily,
-                                    VkPipelineStageFlag.AllCommands, VkPipelineStageFlag.AllCommands,
-                                    VkDependencyFlag.None,
-                                    pendingBuffer.Destination.Offset + pendingBuffer.DestinationOffset,
-                                    pendingBuffer.Count)
-                                .Commit();
+                            var recorder = buffer.RecordCommands(VkCommandBufferUsageFlag.OneTimeSubmit);
+                            recorder.BufferMemoryBarrier(pendingBuffer.Destination.BindingHandle,
+                                VkAccessFlag.AllExceptExt,
+                                pendingBuffer.OwnerQueueFamily,
+                                VkAccessFlag.AllExceptExt, _transferQueue.FamilyIndex,
+                                VkPipelineStageFlag.AllCommands, VkPipelineStageFlag.AllCommands,
+                                VkDependencyFlag.None,
+                                pendingBuffer.Destination.Offset + pendingBuffer.DestinationOffset,
+                                pendingBuffer.Count);
+                            recorder.CopyBuffer(pendingBuffer.Handle.BackingBuffer,
+                                pendingBuffer.Destination.BindingHandle,
+                                new VkBufferCopy
+                                {
+                                    SrcOffset = pendingBuffer.Handle.Offset,
+                                    DstOffset = pendingBuffer.Destination.Offset +
+                                                pendingBuffer.DestinationOffset,
+                                    Size = pendingBuffer.Count
+                                });
+                            recorder.BufferMemoryBarrier(pendingBuffer.Destination.BindingHandle,
+                                VkAccessFlag.AllExceptExt,
+                                _transferQueue.FamilyIndex,
+                                VkAccessFlag.AllExceptExt,
+                                pendingBuffer.OwnerQueueFamily,
+                                VkPipelineStageFlag.AllCommands, VkPipelineStageFlag.AllCommands,
+                                VkDependencyFlag.None,
+                                pendingBuffer.Destination.Offset + pendingBuffer.DestinationOffset,
+                                pendingBuffer.Count);
+                            recorder.Commit();
                             break;
+                        }
                         case PendingFlushImage pendingImage:
+                        {
                             _log.Trace(
                                 $"Transferring {pendingImage.CopyData.BufferRowLength * pendingImage.CopyData.ImageExtent.Height} pixels to {pendingImage.Destination.Handle}");
                             var range = new VkImageSubresourceRange
@@ -152,31 +196,32 @@ namespace VulkanLibrary.Managed.Utilities
                                 BaseArrayLayer = pendingImage.CopyData.ImageSubresource.BaseArrayLayer,
                                 LayerCount = pendingImage.CopyData.ImageSubresource.LayerCount
                             };
-                            buffer.RecordCommands(VkCommandBufferUsageFlag.OneTimeSubmit)
-                                .ImageMemoryBarrier(pendingImage.Destination.Handle,
-                                    pendingImage.Destination.Format, VkImageLayout.Undefined,
-                                    VkImageLayout.TransferDstOptimal,
-                                    range, VkDependencyFlag.None,
-                                    pendingImage.OwnerQueueFamily, _transferQueue.FamilyIndex)
-                                .CopyBufferToImage(pendingImage.Handle.BackingBuffer.Handle,
-                                    pendingImage.Destination.Handle,
-                                    new VkBufferImageCopy
-                                    {
-                                        BufferOffset =
-                                            pendingImage.Handle.Offset + pendingImage.CopyData.BufferOffset,
-                                        BufferRowLength = pendingImage.CopyData.BufferRowLength,
-                                        BufferImageHeight = pendingImage.CopyData.BufferImageHeight,
-                                        ImageSubresource = pendingImage.CopyData.ImageSubresource,
-                                        ImageOffset = pendingImage.CopyData.ImageOffset,
-                                        ImageExtent = pendingImage.CopyData.ImageExtent
-                                    })
-                                .ImageMemoryBarrier(pendingImage.Destination.Handle,
-                                    pendingImage.Destination.Format, VkImageLayout.Undefined,
-                                    VkImageLayout.TransferDstOptimal,
-                                    range, VkDependencyFlag.None,
-                                    _transferQueue.FamilyIndex, pendingImage.OwnerQueueFamily)
-                                .Commit();
+                            var recorder = buffer.RecordCommands(VkCommandBufferUsageFlag.OneTimeSubmit);
+                            recorder.ImageMemoryBarrier(pendingImage.Destination.Handle,
+                                pendingImage.Destination.Format, VkImageLayout.Undefined,
+                                VkImageLayout.TransferDstOptimal,
+                                range, VkDependencyFlag.None,
+                                pendingImage.OwnerQueueFamily, _transferQueue.FamilyIndex);
+                            recorder.CopyBufferToImage(pendingImage.Handle.BackingBuffer.Handle,
+                                pendingImage.Destination.Handle,
+                                new VkBufferImageCopy
+                                {
+                                    BufferOffset =
+                                        pendingImage.Handle.Offset + pendingImage.CopyData.BufferOffset,
+                                    BufferRowLength = pendingImage.CopyData.BufferRowLength,
+                                    BufferImageHeight = pendingImage.CopyData.BufferImageHeight,
+                                    ImageSubresource = pendingImage.CopyData.ImageSubresource,
+                                    ImageOffset = pendingImage.CopyData.ImageOffset,
+                                    ImageExtent = pendingImage.CopyData.ImageExtent
+                                });
+                            recorder.ImageMemoryBarrier(pendingImage.Destination.Handle,
+                                pendingImage.Destination.Format, VkImageLayout.Undefined,
+                                VkImageLayout.TransferDstOptimal,
+                                range, VkDependencyFlag.None,
+                                _transferQueue.FamilyIndex, pendingImage.OwnerQueueFamily);
+                            recorder.Commit();
                             break;
+                        }
                         default:
                             throw new InvalidOperationException(
                                 $"Can't handle pending data {temp.GetType().Name}");
@@ -189,25 +234,18 @@ namespace VulkanLibrary.Managed.Utilities
                     _cmdBufferPool.Return(buffer);
                 }
             }
+
             return toFlush.Count > 0;
         }
 
-        public unsafe void Transfer(IBindableBuffer dest, ulong destOffset, void* data, ulong count,
+        public unsafe void Transfer(IPinnableBindableBuffer dest, ulong destOffset, void* data, ulong count,
             uint destQueueFamily, Action callback = null)
         {
             var handle = Device.BufferPools.Allocate(_transferType, _usage, _flags, count);
             Buffer.MemoryCopy(data, handle.MappedMemory.Handle.ToPointer(), handle.Size, count);
             if (!handle.BackingMemory.MemoryType.HostCoherent)
                 handle.MappedMemory.FlushRange(0, count);
-            _pendingFlush.Enqueue(new PendingFlushBuffer
-            {
-                Count = count,
-                Destination = dest,
-                DestinationOffset = destOffset,
-                Handle = handle,
-                OwnerQueueFamily = destQueueFamily,
-                Callback = callback
-            });
+            _pendingFlush.Enqueue(new PendingFlushBuffer(handle, destQueueFamily, callback, dest, destOffset, count));
             _pendingFlushQueued.Set();
         }
 
@@ -218,14 +256,7 @@ namespace VulkanLibrary.Managed.Utilities
             Buffer.MemoryCopy(data, handle.MappedMemory.Handle.ToPointer(), handle.Size, count);
             if (!handle.BackingMemory.MemoryType.HostCoherent)
                 handle.MappedMemory.FlushRange(0, count);
-            _pendingFlush.Enqueue(new PendingFlushImage
-            {
-                Destination = dest,
-                Handle = handle,
-                CopyData = copyInfo,
-                OwnerQueueFamily = destQueueFamily,
-                Callback = callback
-            });
+            _pendingFlush.Enqueue(new PendingFlushImage(handle, destQueueFamily, callback, dest, copyInfo));
             _pendingFlushQueued.Set();
         }
 

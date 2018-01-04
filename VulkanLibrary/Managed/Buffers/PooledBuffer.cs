@@ -8,7 +8,7 @@ using VulkanLibrary.Unmanaged.Handles;
 
 namespace VulkanLibrary.Managed.Buffers
 {
-    public class PooledBuffer : VulkanHandle<BufferPools.MemoryHandle>, IBindableBuffer, IDeviceOwned, IPooledMemory
+    public class PooledBuffer : VulkanHandle<BufferPools.MemoryHandle>, IPinnableBindableBuffer, IDeviceOwned, IPooledMemory
     {
         /// <inheritdoc/>
         public Instance Instance => Handle.BackingBuffer?.Instance;

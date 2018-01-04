@@ -85,8 +85,8 @@ namespace VulkanLibrary.Managed.Handles
         public void Return(CommandBufferPooledExclusiveUse buff)
         {
             buff.AssertValid();
-            Debug.Assert(!buff.IsBuilding);
-            Debug.Assert(buff.CommandPool == this);
+            Debug.Assert(!buff.IsBuilding, "Command buffer is currently building");
+            Debug.Assert(buff.CommandPool == this, "Command pool isn't this");
             if (buff.IsSubmitted)
                 lock (_unavailable)
                     _unavailable.Add(buff);

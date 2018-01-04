@@ -18,7 +18,13 @@ namespace VulkanLibrary.Managed.Buffers
     {
         private uint _dirtyMin, _dirtyMax;
         private readonly ulong _itemSize;
-        public readonly T[] _data;
+        private readonly T[] _data;
+        
+        // ReSharper disable once ConvertToAutoPropertyWhenPossible
+        /// <summary>
+        /// A view into the internal data where write access isn't tracked
+        /// </summary>
+        public T[] UntrackedData => _data;
 
         /// <summary>
         /// Number of elements in this buffer
