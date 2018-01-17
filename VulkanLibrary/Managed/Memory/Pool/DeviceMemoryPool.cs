@@ -60,9 +60,30 @@ namespace VulkanLibrary.Managed.Memory.Pool
         /// <param name="size">Size</param>
         /// <returns>memory handle</returns>
         /// <exception cref="OutOfMemoryException">Not enough space in pool</exception>
+        [MethodImpl(MethodImplOptions.Synchronized)] // TODO better sync with rwlock
+        public bool TryAllocate(ulong size, out MemoryHandle res)
+        {
+            if (_pool.TryAllocate(size, out var mem))
+            {
+                res = new MemoryHandle(this, mem);
+                return true;
+            }
+
+            res = default(MemoryHandle);
+            return false;
+        }
+
+        /// <summary>
+        /// Allocates a memory object of the given size
+        /// </summary>
+        /// <param name="size">Size</param>
+        /// <returns>memory handle</returns>
+        /// <exception cref="OutOfMemoryException">Not enough space in pool</exception>
         public MemoryHandle Allocate(ulong size)
         {
-            return new MemoryHandle(this, _pool.Allocate(size));
+            if (TryAllocate(size, out var result))
+                return result;
+            throw new OutOfMemoryException("No space left");
         }
 
         /// <summary>

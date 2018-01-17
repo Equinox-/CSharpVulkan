@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Diagnostics.Contracts;
 using VulkanLibrary.Unmanaged;
 using VulkanLibrary.Unmanaged.Handles;
 
@@ -19,7 +20,7 @@ namespace VulkanLibrary.Managed.Handles
 
         public CommandBufferPooledExclusiveUse(CommandPoolCached pool) : base(pool, VkCommandBufferLevel.Primary)
         {
-            Logging.Allocations.Trace($"Creating new pooled command buffer for {pool.GetHashCode():X}");
+            Logging.Allocations?.Trace($"Creating new pooled command buffer for {pool.GetHashCode():X}");
             _fence = new Fence(pool.Device, 0);
         }
 

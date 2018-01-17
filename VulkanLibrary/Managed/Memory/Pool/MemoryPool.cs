@@ -183,11 +183,15 @@ namespace VulkanLibrary.Managed.Memory.Pool
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public Memory Allocate(ulong size)
+        public bool TryAllocate(ulong size, out Memory memory)
         {
             size = AlignValue(size);
             if (FreeSpace < size)
-                throw new OutOfMemoryException("No space left");
+            {
+                memory = default(Memory);
+                return false;
+            }
+
             uint cid = 0;
             while (cid != NullBlockHeader)
             {
@@ -221,10 +225,20 @@ namespace VulkanLibrary.Managed.Memory.Pool
                     }
                     FreeSpace -= _blocks[cid].Size;
                     Logging.Allocations?.Trace($"Allocating {(uint)GetHashCode():X8}/{cid:X8} => {_blocks[cid].Size} @ {_blocks[cid].Offset}");
-                    return new Memory(cid, _blocks[cid].Offset, _blocks[cid].Size);
+                    memory= new Memory(cid, _blocks[cid].Offset, _blocks[cid].Size);
+                    return true;
                 }
                 cid = _blocks[cid].NextBlock;
             }
+
+            memory = default(Memory);
+            return false;
+        }
+
+        public Memory Allocate(ulong size)
+        {
+            if (TryAllocate(size, out Memory result))
+                return result;
             throw new OutOfMemoryException("No space left");
         }
 

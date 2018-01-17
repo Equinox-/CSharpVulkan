@@ -94,17 +94,8 @@ namespace VulkanLibrary.Managed.Buffers.Pool
         {
             var pools = PoolForUsage(type, usage, create);
             foreach (var pool in pools)
-                if (pool.FreeSpace >= size)
-                {
-                    try
-                    {
-                        return new MemoryHandle(pool, pool.Allocate(size));
-                    }
-                    catch (OutOfMemoryException)
-                    {
-                        // continue onto the next pool
-                    }
-                }
+                if (pool.TryAllocate(size, out var tmp))
+                    return new MemoryHandle(pool, tmp);
             // Create a new pool
             var blockSize = BlockSizeForUsage(usage);
             var blockCount = System.Math.Max((ulong) System.Math.Ceiling(size / (double) blockSize) * 4UL, PoolBlockCount);

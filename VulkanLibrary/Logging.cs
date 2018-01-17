@@ -4,6 +4,6 @@ namespace VulkanLibrary
 {
     public static class Logging
     {
-        public static ILogger Allocations = LogManager.GetLogger("Allocations");
+        public static ILogger Allocations = null;//LogManager.GetLogger("Allocations");
     }
 }

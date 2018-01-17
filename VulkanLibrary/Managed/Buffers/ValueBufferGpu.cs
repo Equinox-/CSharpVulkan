@@ -4,6 +4,7 @@ using VulkanLibrary.Managed.Handles;
 using VulkanLibrary.Managed.Memory;
 using VulkanLibrary.Managed.Utilities;
 using VulkanLibrary.Unmanaged;
+using VulkanLibrary.Unmanaged.Handles;
 
 namespace VulkanLibrary.Managed.Buffers
 {
@@ -32,17 +33,17 @@ namespace VulkanLibrary.Managed.Buffers
         }
         
         public ValueBufferGpu(DeferredTransfer flush, VkBufferUsageFlag usage,
-            VkBufferCreateFlag create, uint targetQueueFamily, Action callback, params T[] values) : base(flush.Device, usage, create,
+            VkBufferCreateFlag create, uint targetQueueFamily, Action callback, VkSemaphore? signal, params T[] values) : base(flush.Device, usage, create,
             FindDeviceMemory(flush.PhysicalDevice,  (ulong) Marshal.SizeOf<T>() * (ulong) values.LongLength), values)
         {
             _deferredFlusher = flush;
             _targetQueueFamily = targetQueueFamily;
-            Commit(callback);
+            Commit(callback, signal);
         }
 
-        protected override unsafe void WriteGpuMemory(void* ptrCpu, ulong gpuOffset, ulong countBytes, Action callback)
+        protected override unsafe void WriteGpuMemory(void* ptrCpu, ulong gpuOffset, ulong countBytes, Action callback, VkSemaphore? signal)
         {
-            _deferredFlusher.Transfer(this, gpuOffset, ptrCpu, countBytes, _targetQueueFamily, callback);
+            _deferredFlusher.Transfer(this, gpuOffset, ptrCpu, countBytes, _targetQueueFamily, callback, signal);
         }
 
         protected override unsafe void ReadGpuMemory(void* ptrCpu, ulong gpuOffset, ulong countBytes, Action callback)

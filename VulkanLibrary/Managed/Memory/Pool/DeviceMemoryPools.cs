@@ -98,17 +98,8 @@ namespace VulkanLibrary.Managed.Memory.Pool
         {
             var pools = PoolForType(type, poolType);
             foreach (var pool in pools)
-                if (pool.FreeSpace >= size)
-                {
-                    try
-                    {
-                        return new MemoryHandle(pool, pool.Allocate(size));
-                    }
-                    catch (OutOfMemoryException)
-                    {
-                        // continue onto the next pool
-                    }
-                }
+                if (pool.TryAllocate(size, out var tmp))
+                    return new MemoryHandle(pool, tmp);
             // Create a new pool
             var blockCount = PoolBlockCount;
             var blockSize = BlockSizeForPool(poolType);

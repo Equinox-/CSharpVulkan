@@ -7,6 +7,7 @@ using VulkanLibrary.Managed.Memory;
 using VulkanLibrary.Managed.Memory.Mapped;
 using VulkanLibrary.Managed.Memory.Pool;
 using VulkanLibrary.Unmanaged;
+using VulkanLibrary.Unmanaged.Handles;
 using Buffer = VulkanLibrary.Managed.Handles.Buffer;
 
 namespace VulkanLibrary.Managed.Buffers
@@ -37,8 +38,10 @@ namespace VulkanLibrary.Managed.Buffers
             CommitEverything();
         }
 
-        protected override unsafe void WriteGpuMemory(void* ptrCpu, ulong gpuOffset, ulong countBytes, Action callback)
+        protected override unsafe void WriteGpuMemory(void* ptrCpu, ulong gpuOffset, ulong countBytes, Action callback, VkSemaphore? signal)
         {
+            if (signal.HasValue && signal.Value != VkSemaphore.Null)
+                throw new NotImplementedException("Semaphores don't work with CPU value buffers");
             var ptrGpu = new UIntPtr((ulong) BackingBuffer.Memory.MappedMemory.Handle.ToInt64() + gpuOffset)
                 .ToPointer();
             System.Buffer.MemoryCopy(ptrCpu, ptrGpu, BackingBuffer.Memory.MappedMemory.Size - gpuOffset,

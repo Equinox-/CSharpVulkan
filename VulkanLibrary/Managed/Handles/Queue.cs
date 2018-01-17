@@ -61,7 +61,10 @@ namespace VulkanLibrary.Managed.Handles
                     PWaitDstStageMask = &waitStage,
                 };
                 if (buffer is CommandBufferPooledExclusiveUse peu)
+                {
+                    Debug.Assert(submitH == VkFence.Null, "Can't use a submit fence on a pooled handle");
                     peu.DoSubmit(Handle, info);
+                }
                 else
                     VkException.Check(VkQueue.vkQueueSubmit(Handle, 1, &info, submitH));
             }

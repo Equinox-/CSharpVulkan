@@ -12,6 +12,7 @@ using VulkanLibrary.Managed.Buffers.Pool;
 using VulkanLibrary.Managed.Handles;
 using VulkanLibrary.Managed.Memory;
 using VulkanLibrary.Unmanaged;
+using VulkanLibrary.Unmanaged.Handles;
 using Buffer = System.Buffer;
 
 namespace VulkanLibrary.Managed.Utilities
@@ -36,12 +37,14 @@ namespace VulkanLibrary.Managed.Utilities
             public BufferPools.MemoryHandle Handle => _handle;
             public readonly uint OwnerQueueFamily;
             public readonly Action Callback;
+            public readonly VkSemaphore Signal;
 
-            protected PendingFlush(BufferPools.MemoryHandle src, uint queue, Action callback)
+            protected PendingFlush(BufferPools.MemoryHandle src, uint queue, Action callback, VkSemaphore signal)
             {
                 _handle = src;
                 OwnerQueueFamily = queue;
                 Callback = callback;
+                Signal = signal;
             }
 
             public virtual void Finished()
@@ -50,7 +53,7 @@ namespace VulkanLibrary.Managed.Utilities
                 _handle.Free();
             }
 
-            #if DEFERRED_ERROR_TRACING
+#if DEFERRED_ERROR_TRACING
             public readonly string Allocated = Environment.StackTrace;
             #endif
         }
@@ -60,8 +63,9 @@ namespace VulkanLibrary.Managed.Utilities
             public readonly IPinnableBindableBuffer Destination;
             public readonly ulong DestinationOffset, Count;
 
-            public PendingFlushBuffer(BufferPools.MemoryHandle src, uint queue, Action callback, IPinnableBindableBuffer dst,
-                ulong dstOffset, ulong dstCount) : base(src, queue, callback)
+            public PendingFlushBuffer(BufferPools.MemoryHandle src, uint queue, Action callback, VkSemaphore signal,
+                IPinnableBindableBuffer dst,
+                ulong dstOffset, ulong dstCount) : base(src, queue, callback, signal)
             {
                 Destination = dst;
                 DestinationOffset = dstOffset;
@@ -81,8 +85,9 @@ namespace VulkanLibrary.Managed.Utilities
             public readonly Image Destination;
             public readonly VkBufferImageCopy CopyData;
 
-            public PendingFlushImage(BufferPools.MemoryHandle src, uint queue, Action callback, Image dst,
-                VkBufferImageCopy copyDesc) : base(src, queue, callback)
+            public PendingFlushImage(BufferPools.MemoryHandle src, uint queue, Action callback, VkSemaphore signal,
+                Image dst,
+                VkBufferImageCopy copyDesc) : base(src, queue, callback, signal)
             {
                 Destination = dst;
                 CopyData = copyDesc;
@@ -227,7 +232,7 @@ namespace VulkanLibrary.Managed.Utilities
                                 $"Can't handle pending data {temp.GetType().Name}");
                     }
 
-                    _transferQueue.Submit(buffer);
+                    _transferQueue.Submit(buffer, null, VkPipelineStageFlag.None, temp.Signal);
                 }
                 finally
                 {
@@ -239,24 +244,26 @@ namespace VulkanLibrary.Managed.Utilities
         }
 
         public unsafe void Transfer(IPinnableBindableBuffer dest, ulong destOffset, void* data, ulong count,
-            uint destQueueFamily, Action callback = null)
+            uint destQueueFamily, Action callback = null, VkSemaphore? signal = null)
         {
             var handle = Device.BufferPools.Allocate(_transferType, _usage, _flags, count);
             Buffer.MemoryCopy(data, handle.MappedMemory.Handle.ToPointer(), handle.Size, count);
             if (!handle.BackingMemory.MemoryType.HostCoherent)
                 handle.MappedMemory.FlushRange(0, count);
-            _pendingFlush.Enqueue(new PendingFlushBuffer(handle, destQueueFamily, callback, dest, destOffset, count));
+            _pendingFlush.Enqueue(new PendingFlushBuffer(handle, destQueueFamily, callback, signal ?? VkSemaphore.Null,
+                dest, destOffset, count));
             _pendingFlushQueued.Set();
         }
 
         public unsafe void Transfer(Image dest, void* data, ulong count, VkBufferImageCopy copyInfo,
-            uint destQueueFamily, Action callback = null)
+            uint destQueueFamily, Action callback = null, VkSemaphore? signal = null)
         {
             var handle = Device.BufferPools.Allocate(_transferType, _usage, _flags, count);
             Buffer.MemoryCopy(data, handle.MappedMemory.Handle.ToPointer(), handle.Size, count);
             if (!handle.BackingMemory.MemoryType.HostCoherent)
                 handle.MappedMemory.FlushRange(0, count);
-            _pendingFlush.Enqueue(new PendingFlushImage(handle, destQueueFamily, callback, dest, copyInfo));
+            _pendingFlush.Enqueue(new PendingFlushImage(handle, destQueueFamily, callback, signal ?? VkSemaphore.Null,
+                dest, copyInfo));
             _pendingFlushQueued.Set();
         }
 

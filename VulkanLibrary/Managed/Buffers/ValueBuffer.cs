@@ -3,14 +3,15 @@ using System.Runtime.InteropServices;
 using VulkanLibrary.Managed.Handles;
 using VulkanLibrary.Managed.Memory;
 using VulkanLibrary.Unmanaged;
+using VulkanLibrary.Unmanaged.Handles;
 
 namespace VulkanLibrary.Managed.Buffers
 {
     public interface IValueBuffer
     {
-        void Commit(Action callback = null);
-        void CommitEverything(Action callback = null);
-        void CommitRange(uint min, uint max, Action callback = null);
+        void Commit(Action callback = null, VkSemaphore? signal = null);
+        void CommitEverything(Action callback = null, VkSemaphore? signal = null);
+        void CommitRange(uint min, uint max, Action callback = null, VkSemaphore? signal = null);
         void Read(Action callback = null);
     }
     
@@ -63,14 +64,15 @@ namespace VulkanLibrary.Managed.Buffers
             }
         }
 
-        protected abstract unsafe void WriteGpuMemory(void* ptrCpu, ulong gpuOffset, ulong countBytes, Action callback);
+        protected abstract unsafe void WriteGpuMemory(void* ptrCpu, ulong gpuOffset, ulong countBytes, Action callback, VkSemaphore? signal);
         protected abstract unsafe void ReadGpuMemory(void* ptrCpu, ulong gpuOffset, ulong countBytes, Action callback);
 
         /// <summary>
         /// Flushes the dirty region of the buffer to the GPU
         /// </summary>
         /// <param name="callback">flush finished</param>
-        public void Commit(Action callback = null)
+        /// <param name="signal">flush finished</param>
+        public void Commit(Action callback = null, VkSemaphore? signal = null)
         {
             uint min, max;
             lock (this)
@@ -87,7 +89,8 @@ namespace VulkanLibrary.Managed.Buffers
         /// Flushes this entire buffer to the GPU
         /// </summary>
         /// <param name="callback">flush finished</param>
-        public void CommitEverything(Action callback = null)
+        /// <param name="signal">flush finished</param>
+        public void CommitEverything(Action callback = null, VkSemaphore? signal = null)
         {
             lock (this)
             {
@@ -103,7 +106,8 @@ namespace VulkanLibrary.Managed.Buffers
         /// <param name="min">Minimum index, inclusive</param>
         /// <param name="max">Maximum index, exclusive</param>
         /// <param name="callback">flush finished</param>
-        public void CommitRange(uint min, uint max, Action callback = null)
+        /// <param name="signal">flush finished</param>
+        public void CommitRange(uint min, uint max, Action callback = null, VkSemaphore? signal = null)
         {
             if (min >= max)
                 return;
@@ -117,7 +121,7 @@ namespace VulkanLibrary.Managed.Buffers
                     var ptrCpu =
                         new UIntPtr((ulong) Marshal.UnsafeAddrOfPinnedArrayElement(_data, 0).ToInt64() + addrMin)
                             .ToPointer();
-                    WriteGpuMemory(ptrCpu, addrMin, addrCount, callback);
+                    WriteGpuMemory(ptrCpu, addrMin, addrCount, callback, signal);
                 }
                 finally
                 {

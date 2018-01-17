@@ -9,7 +9,7 @@ namespace VulkanLibrary.Managed.Handles
 {
     public class CommandPoolCached : CommandPool
     {
-        public const int ForceRotateTimeMs = 1000;
+        public const int ForceRotateTimeMs = 10;
         
         private readonly ConcurrentQueue<CommandBufferPooledExclusiveUse> _available;
         private readonly List<CommandBufferPooledExclusiveUse> _unavailable;
