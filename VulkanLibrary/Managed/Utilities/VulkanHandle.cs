@@ -9,7 +9,7 @@ namespace VulkanLibrary.Managed.Utilities
     /// <summary>
     /// Represents a RAII handle to a Vulkan resource.
     /// </summary>
-    public abstract class VulkanHandle : CriticalFinalizerObject, IDisposable, IPinnable
+    public abstract class VulkanHandle : CriticalFinalizerObject, IDisposable, IPinnable, INameableResource
     {
         private enum LifeState : int
         {
@@ -17,7 +17,8 @@ namespace VulkanLibrary.Managed.Utilities
             Dying,
             Dead
         }
-
+        
+        public string Name { get; set; }
 
         protected VulkanHandle()
         {
@@ -116,6 +117,12 @@ namespace VulkanLibrary.Managed.Utilities
             Free();
             _disposed = (int) LifeState.Dead;
             Debug.Fail($"Resource {GetType()} was leaked");
+        }
+
+        public override string ToString()
+        {
+            var n = Name;
+            return string.IsNullOrEmpty(n) ? base.ToString() : n;
         }
     }
 

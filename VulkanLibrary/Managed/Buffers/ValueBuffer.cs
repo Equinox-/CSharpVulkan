@@ -82,7 +82,7 @@ namespace VulkanLibrary.Managed.Buffers
                 max = _dirtyMax;
                 _dirtyMax = 0;
             }
-            CommitRange(min, max, callback);
+            CommitRange(min, max, callback, signal);
         }
 
         /// <summary>
@@ -97,7 +97,7 @@ namespace VulkanLibrary.Managed.Buffers
                 _dirtyMin = uint.MaxValue;
                 _dirtyMax = 0;
             }
-            CommitRange(0, Length, callback);
+            CommitRange(0, Length, callback, signal);
         }
 
         /// <summary>

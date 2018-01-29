@@ -243,22 +243,24 @@ namespace CodeGenerator
                     writer.WriteLineIndent($"// Parents are {string.Join(", ", handle.ParentHandles)}");
                     writer.WriteLine("#pragma warning disable 649");
                     string handleNull;
+                    string handleType;
                     // ReSharper disable once ConvertIfStatementToConditionalTernaryExpression
                     if (handle.IsDispatchable)
                     {
-                        writer.WriteLineIndent("private IntPtr _handle;");
+                        handleType = "IntPtr";
                         handleNull = "IntPtr.Zero";
                     }
                     else
                     {
-                        writer.WriteLineIndent("private ulong _handle;");
+                        handleType = "ulong";
                         handleNull = "0UL";
                     }
+                    writer.WriteLineIndent($"private readonly {handleType} _handle;");
 
-                    writer.WriteLineIndent(
-                        $"public static readonly {handle.TypeName} Null = new {handle.TypeName}() {{_handle = {handleNull} }};");
+                    writer.WriteLineIndent($"public static readonly {handle.TypeName} Null = new {handle.TypeName}({handleNull});");
                     writer.WriteLine("#pragma warning restore 649");
                     writer.WriteLine();
+                    writer.WriteLineIndent($"private {handle.TypeName}({handleType} handle) => _handle = handle;");
                     writer.WriteLineIndent("/// <inheritdoc/>");
                     writer.WriteLineIndent($"public bool Equals({handle.TypeName} other) => other._handle == _handle;");
                     writer.WriteLineIndent(
@@ -270,6 +272,8 @@ namespace CodeGenerator
                         $"public static bool operator!= ({handle.TypeName} a, {handle.TypeName} b) => a._handle != b._handle;");
                     writer.WriteLineIndent("/// <inheritdoc/>");
                     writer.WriteLineIndent($"public override int GetHashCode() => _handle.GetHashCode();");
+                    writer.WriteLineIndent("/// <inheritdoc/>");
+                    writer.WriteLineIndent($"public override string ToString() => $\"{handle.TypeName}[0x{{_handle:x}}]\";");
                 }
             });
         }

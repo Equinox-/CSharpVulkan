@@ -140,25 +140,21 @@ namespace VulkanLibrary.Managed.Utilities
         /// <returns>true if anything was queued</returns>
         public bool Flush()
         {
-            List<PendingFlush> toFlush = new List<PendingFlush>(_pendingFlush.Count);
+            var flushed = 0;
+            while (_pendingFlush.TryDequeue(out var temp))
             {
-                while (_pendingFlush.TryDequeue(out var pending))
-                    toFlush.Add(pending);
-            }
-            if (toFlush.Count == 0)
-                return false;
-            foreach (var temp in toFlush)
-            {
+                flushed++;
                 var buffer = _cmdBufferPool.Borrow();
                 try
                 {
                     buffer.SubmissionFinished += temp.Finished;
+                    var sigString = temp.Signal != VkSemaphore.Null ? ", then signaling " + temp.Signal : "";
                     switch (temp)
                     {
                         case PendingFlushBuffer pendingBuffer:
                         {
                             _log.Trace(
-                                $"Transferring {pendingBuffer.Count} bytes to {pendingBuffer.Destination}");
+                                $"Transferring {pendingBuffer.Count} bytes to {pendingBuffer.Destination}{sigString}\t({_pendingFlush.Count} remain)");
                             var recorder = buffer.RecordCommands(VkCommandBufferUsageFlag.OneTimeSubmit);
                             recorder.BufferMemoryBarrier(pendingBuffer.Destination.BindingHandle,
                                 VkAccessFlag.AllExceptExt,
@@ -192,7 +188,7 @@ namespace VulkanLibrary.Managed.Utilities
                         case PendingFlushImage pendingImage:
                         {
                             _log.Trace(
-                                $"Transferring {pendingImage.CopyData.BufferRowLength * pendingImage.CopyData.ImageExtent.Height} pixels to {pendingImage.Destination.Handle}");
+                                $"Transferring {pendingImage.CopyData.BufferRowLength * pendingImage.CopyData.ImageExtent.Height} pixels to {pendingImage.Destination.Handle}{sigString}\t({_pendingFlush.Count} remain)");
                             var range = new VkImageSubresourceRange
                             {
                                 AspectMask = pendingImage.CopyData.ImageSubresource.AspectMask,
@@ -240,7 +236,7 @@ namespace VulkanLibrary.Managed.Utilities
                 }
             }
 
-            return toFlush.Count > 0;
+            return flushed > 0;
         }
 
         public unsafe void Transfer(IPinnableBindableBuffer dest, ulong destOffset, void* data, ulong count,

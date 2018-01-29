@@ -54,9 +54,9 @@ namespace VulkanLibrary.Managed.Handles
                     PNext = IntPtr.Zero,
                     CommandBufferCount = 1,
                     PCommandBuffers = &buff,
-                    SignalSemaphoreCount = signal.HasValue ? 1u : 0u,
+                    SignalSemaphoreCount = signalH != VkSemaphore.Null ? 1u : 0u,
                     PSignalSemaphores = &signalH,
-                    WaitSemaphoreCount = wait.HasValue ? 1u : 0u,
+                    WaitSemaphoreCount = waitH != VkSemaphore.Null ? 1u : 0u,
                     PWaitSemaphores = &waitH,
                     PWaitDstStageMask = &waitStage,
                 };
