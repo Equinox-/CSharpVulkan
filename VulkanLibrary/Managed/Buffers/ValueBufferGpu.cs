@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Linq;
 using System.Runtime.InteropServices;
 using VulkanLibrary.Managed.Handles;
 using VulkanLibrary.Managed.Memory;
@@ -11,7 +12,6 @@ namespace VulkanLibrary.Managed.Buffers
     public class ValueBufferGpu<T> : ValueBuffer<T> where T : struct
     {
         private readonly DeferredTransfer _deferredFlusher;
-        private readonly uint _targetQueueFamily;
 
         private static MemoryType FindDeviceMemory(PhysicalDevice dev, ulong capacity)
         {
@@ -23,30 +23,19 @@ namespace VulkanLibrary.Managed.Buffers
             return req.FindMemoryType(dev);
         }
 
-        public ValueBufferGpu(DeferredTransfer flush, VkBufferUsageFlag usage,
-            VkBufferCreateFlag create, uint targetQueueFamily, params T[] values) : base(flush.Device, usage, create,
-            FindDeviceMemory(flush.PhysicalDevice,  (ulong) Marshal.SizeOf<T>() * (ulong) values.LongLength), values)
+        public ValueBufferGpu(DeferredTransfer flush, VkBufferUsageFlag usage, VkBufferCreateFlag create, T[] values) :
+            base(flush.Device, usage, create,
+                FindDeviceMemory(flush.PhysicalDevice, (ulong) Marshal.SizeOf<T>() * (ulong) values.LongLength), values)
         {
             _deferredFlusher = flush;
-            _targetQueueFamily = targetQueueFamily;
-            CommitEverything();
-        }
-        
-        public ValueBufferGpu(DeferredTransfer flush, VkBufferUsageFlag usage,
-            VkBufferCreateFlag create, uint targetQueueFamily, Action callback, VkSemaphore? signal, params T[] values) : base(flush.Device, usage, create,
-            FindDeviceMemory(flush.PhysicalDevice,  (ulong) Marshal.SizeOf<T>() * (ulong) values.LongLength), values)
-        {
-            _deferredFlusher = flush;
-            _targetQueueFamily = targetQueueFamily;
-            Commit(callback, signal);
         }
 
-        protected override unsafe void WriteGpuMemory(void* ptrCpu, ulong gpuOffset, ulong countBytes, Action callback, VkSemaphore? signal)
+        protected override unsafe void WriteGpuMemory(void* ptrCpu, ulong gpuOffset, ulong countBytes, DeferredTransfer.TransferArguments? args)
         {
-            _deferredFlusher.Transfer(this, gpuOffset, ptrCpu, countBytes, _targetQueueFamily, callback, signal);
+            _deferredFlusher.Transfer(this, gpuOffset, ptrCpu, countBytes, args);
         }
 
-        protected override unsafe void ReadGpuMemory(void* ptrCpu, ulong gpuOffset, ulong countBytes, Action callback)
+        protected override unsafe void ReadGpuMemory(void* ptrCpu, ulong gpuOffset, ulong countBytes, DeferredTransfer.TransferArguments? args)
         {
             throw new System.NotImplementedException();
         }

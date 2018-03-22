@@ -1,4 +1,6 @@
-﻿using VulkanLibrary.Unmanaged;
+﻿using VulkanLibrary.Managed.Utilities;
+using VulkanLibrary.Unmanaged;
+using VulkanLibrary.Unmanaged.Handles;
 
 namespace VulkanLibrary.Managed.Handles
 {

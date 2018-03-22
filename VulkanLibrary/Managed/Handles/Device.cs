@@ -72,10 +72,12 @@ namespace VulkanLibrary.Managed.Handles
         /// <param name="requiredExtensions"></param>
         /// <param name="preferredLayers"></param>
         /// <param name="queueOptions">Queue options</param>
+        /// <param name="desiredFeatures">Desired physical device features</param>
         public Device(PhysicalDevice physDevice, ICollection<VkExtension> preferredExtensions,
             ICollection<VkExtension> requiredExtensions,
             ICollection<string> preferredLayers, ICollection<string> requiredLayers,
-            QueueCreateInfo[] queueOptions)
+            QueueCreateInfo[] queueOptions,
+            VkPhysicalDeviceFeatures desiredFeatures)
         {
             PhysicalDevice = physDevice;
 
@@ -157,13 +159,10 @@ namespace VulkanLibrary.Managed.Handles
                     for (var i = 0; i < extensionsToUse.Count; i++)
                         extensionsToUseAnsi[i] = Marshal.StringToHGlobalAnsi(extensionsToUse[i]);
 
-                    var pinnedLayersToUse = GCHandle.Alloc(layersToUseAnsi, GCHandleType.Pinned);
-                    var pinnedExtensionsToUse = GCHandle.Alloc(extensionsToUseAnsi, GCHandleType.Pinned);
                     try
                     {
                         fixed (VkDeviceQueueCreateInfo* queueOptionsPtr = queueCreateInfo)
                         {
-                            var desiredFeatures = ChooseDeviceFeatures();
                             Features = desiredFeatures;
                             var deviceCreateInfo = new VkDeviceCreateInfo()
                             {
@@ -228,27 +227,6 @@ namespace VulkanLibrary.Managed.Handles
             if (!size.HasValue)
                 size = surface.Capabilities(PhysicalDevice).CurrentExtent;
             return new SwapchainKHRBuilder(surface, this, size.Value);
-        }
-
-        private static VkPhysicalDeviceFeatures ChooseDeviceFeatures()
-        {
-            return new VkPhysicalDeviceFeatures()
-            {
-                GeometryShader = true,
-                TessellationShader = true,
-                MultiDrawIndirect = true,
-#if DEBUG
-                PipelineStatisticsQuery = true,
-#endif
-                ShaderUniformBufferArrayDynamicIndexing = true,
-                ShaderSampledImageArrayDynamicIndexing = true,
-                ShaderStorageImageArrayDynamicIndexing = true,
-                ShaderClipDistance = true,
-                ShaderCullDistance = true,
-                ShaderFloat64 = true,
-                InheritedQueries = true,
-                SamplerAnisotropy = true
-            };
         }
 
         /// <summary>

@@ -6,6 +6,7 @@ using VulkanLibrary.Managed.Handles;
 using VulkanLibrary.Managed.Memory;
 using VulkanLibrary.Managed.Memory.Mapped;
 using VulkanLibrary.Managed.Memory.Pool;
+using VulkanLibrary.Managed.Utilities;
 using VulkanLibrary.Unmanaged;
 using VulkanLibrary.Unmanaged.Handles;
 using Buffer = VulkanLibrary.Managed.Handles.Buffer;
@@ -32,32 +33,33 @@ namespace VulkanLibrary.Managed.Buffers
 
         public ValueBufferCpu(Device device, VkBufferUsageFlag usage, VkBufferCreateFlag flags,
             bool coherent, params T[] values) : base(device, usage, flags,
-            FindHostMemory(device.PhysicalDevice, coherent, (ulong) Marshal.SizeOf<T>() * (ulong) values.LongLength), values)
+            FindHostMemory(device.PhysicalDevice, coherent, (ulong) Marshal.SizeOf<T>() * (ulong) values.LongLength),
+            values)
         {
             Coherent = BackingBuffer.Memory.BackingMemory.MemoryType.HostCoherent;
             CommitEverything();
         }
 
-        protected override unsafe void WriteGpuMemory(void* ptrCpu, ulong gpuOffset, ulong countBytes, Action callback, VkSemaphore? signal)
+        protected override unsafe void WriteGpuMemory(void* ptrCpu, ulong gpuOffset, ulong countBytes, DeferredTransfer.TransferArguments? args = null)
         {
-            if (signal.HasValue && signal.Value != VkSemaphore.Null)
-                throw new NotImplementedException("Semaphores don't work with CPU value buffers");
+            if (args.HasValue)
+                throw new NotImplementedException("Transfer args not supported");
             var ptrGpu = new UIntPtr((ulong) BackingBuffer.Memory.MappedMemory.Handle.ToInt64() + gpuOffset)
                 .ToPointer();
             System.Buffer.MemoryCopy(ptrCpu, ptrGpu, BackingBuffer.Memory.MappedMemory.Size - gpuOffset,
                 countBytes);
             if (!Coherent)
                 BackingBuffer.Memory.MappedMemory.FlushRange(gpuOffset, countBytes);
-            callback?.Invoke();
         }
 
-        protected override unsafe void ReadGpuMemory(void* ptrCpu, ulong gpuOffset, ulong countBytes, Action callback)
+        protected override unsafe void ReadGpuMemory(void* ptrCpu, ulong gpuOffset, ulong countBytes, DeferredTransfer.TransferArguments? args = null)
         {
+            if (args.HasValue)
+                throw new NotImplementedException("Transfer args don't work with CPU value buffers");
             var ptrGpu = new UIntPtr((ulong) BackingBuffer.Memory.MappedMemory.Handle.ToInt64()).ToPointer();
             if (!Coherent)
                 BackingBuffer.Memory.MappedMemory.InvalidateRange(0, countBytes);
             System.Buffer.MemoryCopy(ptrGpu, ptrCpu, countBytes, countBytes);
-            callback?.Invoke();
         }
     }
 }

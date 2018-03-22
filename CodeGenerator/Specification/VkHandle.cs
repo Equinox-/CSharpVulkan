@@ -11,7 +11,7 @@ namespace CodeGenerator.Specification
         public VkHandle(string typeName, bool isDispatchable, string comment, string parent) : base(typeName, comment)
         {
             ParentHandles = parent?.Split(',').Where(x=>!string.IsNullOrWhiteSpace(x)).ToList() ?? new List<string>();
-            IsDispatchable = IsDispatchable;
+            IsDispatchable = isDispatchable;
         }
 
         public override string ToString()

@@ -1824,7 +1824,7 @@ namespace CodeGenerator
                 foreach (var p in parameters)
                 {
                     w.WriteIndent();
-                    w.Write($"/// <param name=\"{SanitizeVariableName(p.Name)}\">");
+                    w.Write($"/// <param name=\"{SanitizeVariableName(p.Name).TrimStart('@')}\">");
                     if (p.Comment != null)
                         w.Write(RewriteComment(p.Comment).Trim('/', ' ', '\t'));
                     w.WriteLine("</param>");

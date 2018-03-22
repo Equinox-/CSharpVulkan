@@ -1,4 +1,5 @@
-﻿using System.Collections.Concurrent;
+﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
@@ -15,7 +16,7 @@ namespace VulkanLibrary.Managed.Handles
         private readonly ConcurrentQueue<CommandBufferPooledExclusiveUse> _available;
         private readonly List<CommandBufferPooledExclusiveUse> _unavailable;
         private readonly uint _capacity;
-        private readonly Timer _forceRotateTimer;
+        private Timer _forceRotateTimer;
 
         public CommandPoolCached(Device dev, uint queueFamily,
             uint maxCacheSize = 32,
@@ -25,12 +26,23 @@ namespace VulkanLibrary.Managed.Handles
             _capacity = maxCacheSize;
             _available = new ConcurrentQueue<CommandBufferPooledExclusiveUse>();
             _unavailable = new List<CommandBufferPooledExclusiveUse>((int) maxCacheSize);
-            _forceRotateTimer = new Timer(RotateFromTimer, this, ForceRotateTimeMs, ForceRotateTimeMs);
+            _forceRotateTimer = new Timer(RotateFromTimer, this, ForceRotateTimeMs, Timeout.Infinite);
         }
 
         private static void RotateFromTimer(object state)
         {
-            ((CommandPoolCached) state).RotateAvailable();
+            var pool = (CommandPoolCached) state;
+            try
+            {
+                pool.RotateAvailable();
+                pool._forceRotateTimer?.Change(ForceRotateTimeMs, Timeout.Infinite);
+            }
+            catch
+            {
+                pool._forceRotateTimer?.Dispose();
+                pool._forceRotateTimer = null;
+                throw;
+            }
         }
 
         private void RotateAvailable()
@@ -119,7 +131,8 @@ namespace VulkanLibrary.Managed.Handles
                 _unavailable.Clear();
             }
 
-            _forceRotateTimer.Dispose();
+            _forceRotateTimer?.Dispose();
+            _forceRotateTimer = null;
             base.Free();
         }
     }

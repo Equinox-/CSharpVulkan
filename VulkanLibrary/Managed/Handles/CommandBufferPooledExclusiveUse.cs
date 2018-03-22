@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
 using System.Diagnostics.Contracts;
+using VulkanLibrary.Managed.Utilities;
 using VulkanLibrary.Unmanaged;
 using VulkanLibrary.Unmanaged.Handles;
 
@@ -16,8 +17,15 @@ namespace VulkanLibrary.Managed.Handles
         /// <remarks>
         /// This event can be delayed by up to <see cref="CommandPoolCached.ForceRotateTimeMs"/>.
         /// </remarks>
-        public event Action SubmissionFinished;
+        public event Action SubmissionFinished
+        {
+            add => _submissionFinished.Add(value);
+            remove => _submissionFinished.Remove(value);
+        }
 
+        private readonly ResettingEvent _submissionFinished = new ResettingEvent();
+
+        // ReSharper disable once SuggestBaseTypeForParameter has to be cached, so hint to user
         public CommandBufferPooledExclusiveUse(CommandPoolCached pool) : base(pool, VkCommandBufferLevel.Primary)
         {
             Logging.Allocations?.Trace($"Creating new pooled command buffer for {pool.GetHashCode():X}");
@@ -45,8 +53,7 @@ namespace VulkanLibrary.Managed.Handles
                 base.AssertValid();
                 if (_state != State.Submitted || !_fence.IsSet)
                     return _state == State.Submitted;
-                SubmissionFinished?.Invoke();
-                SubmissionFinished = null;
+                _submissionFinished.RaiseAndReset();
                 _state = State.Built;
                 return false;
             }
@@ -56,7 +63,7 @@ namespace VulkanLibrary.Managed.Handles
         public override void Reset(VkCommandBufferResetFlag flag)
         {
             base.Reset(flag);
-            SubmissionFinished = null;
+            _submissionFinished.Reset();
         }
 
         protected override void Free()

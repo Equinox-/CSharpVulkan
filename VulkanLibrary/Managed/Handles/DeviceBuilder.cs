@@ -16,12 +16,20 @@ namespace VulkanLibrary.Managed.Handles
         private readonly HashSet<string> _requiredLayers = new HashSet<string>();
         private readonly List<Device.QueueCreateInfo> _queueInfo = new List<Device.QueueCreateInfo>();
         private readonly PhysicalDevice _physicalDevice;
+        private VkPhysicalDeviceFeatures _features;
 
         internal DeviceBuilder(PhysicalDevice dev)
         {
             _physicalDevice = dev;
+            _features = default;
         }
 
+        public DeviceBuilder WithFeatures(VkPhysicalDeviceFeatures f)
+        {
+            _features = f;
+            return this;
+        }
+        
         public DeviceBuilder RequireExtensions(params VkExtension[] ext)
         {
             foreach (var i in ext)
@@ -101,7 +109,7 @@ namespace VulkanLibrary.Managed.Handles
         public Device Build()
         {
             return new Device(_physicalDevice, _preferredExtensions, _requiredExtensions, _preferredLayers,
-                _requiredLayers, _queueInfo.ToArray());
+                _requiredLayers, _queueInfo.ToArray(), _features);
         }
     }
 }

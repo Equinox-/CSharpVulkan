@@ -20,6 +20,16 @@ namespace VulkanLibrary.Managed.Handles
         /// Size of this image
         /// </summary>
         public VkExtent3D Dimensions { get; }
+        
+        /// <summary>
+        /// Number of mipmaps
+        /// </summary>
+        public uint MipmapCount { get; }
+        
+        /// <summary>
+        /// Number of layers
+        /// </summary>
+        public uint LayerCount { get; }
 
         /// <summary>
         /// Size of this image
@@ -82,6 +92,8 @@ namespace VulkanLibrary.Managed.Handles
             Device = dev;
             Format = format;
             Dimensions = size;
+            MipmapCount = mipLevels;
+            LayerCount = arrayLayers;
             unsafe
             {
 #if DEBUG
@@ -114,12 +126,14 @@ namespace VulkanLibrary.Managed.Handles
             }
         }
 
-        protected Image(Device dev, VkImage handle, VkFormat format, VkExtent3D size)
+        protected Image(Device dev, VkImage handle, VkFormat format, VkExtent3D size, uint mips, uint layers)
         {
             Device = dev;
             Format = format;
             Dimensions = size;
             Handle = handle;
+            MipmapCount = mips;
+            LayerCount = layers;
         }
 
         public void BindMemory(DeviceMemory mem, ulong offset)

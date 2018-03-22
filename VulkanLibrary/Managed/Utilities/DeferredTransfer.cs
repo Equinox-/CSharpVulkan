@@ -14,13 +14,12 @@ using VulkanLibrary.Managed.Memory;
 using VulkanLibrary.Unmanaged;
 using VulkanLibrary.Unmanaged.Handles;
 using Buffer = System.Buffer;
+using Semaphore = System.Threading.Semaphore;
 
 namespace VulkanLibrary.Managed.Utilities
 {
-    public class DeferredTransfer : IDeviceOwned, IDisposable
+    public class DeferredTransfer : IDeviceOwned, IDisposable, INameableResource
     {
-        private static readonly ILogger _log = LogManager.GetCurrentClassLogger();
-
         /// <inheritdoc/>
         public Instance Instance => Device.Instance;
 
@@ -33,24 +32,21 @@ namespace VulkanLibrary.Managed.Utilities
         private abstract class PendingFlush
         {
             private BufferPools.MemoryHandle _handle;
-
             public BufferPools.MemoryHandle Handle => _handle;
-            public readonly uint OwnerQueueFamily;
-            public readonly Action Callback;
-            public readonly VkSemaphore Signal;
+            public readonly TransferArguments Arguments;
 
-            protected PendingFlush(BufferPools.MemoryHandle src, uint queue, Action callback, VkSemaphore signal)
+            protected PendingFlush(BufferPools.MemoryHandle src, TransferArguments arguments)
             {
                 _handle = src;
-                OwnerQueueFamily = queue;
-                Callback = callback;
-                Signal = signal;
+                Arguments = arguments;
+                Arguments.SetEvent?.IncreasePins();
             }
 
             public virtual void Finished()
             {
-                Callback?.Invoke();
                 _handle.Free();
+                Arguments.SetEvent?.DecreasePins();
+                Arguments._callback?.Invoke();
             }
 
 #if DEFERRED_ERROR_TRACING
@@ -58,18 +54,18 @@ namespace VulkanLibrary.Managed.Utilities
             #endif
         }
 
-        private class PendingFlushBuffer : PendingFlush
+        private class PendingFlushBuffer : PendingFlush, IBindableBuffer
         {
             public readonly IPinnableBindableBuffer Destination;
-            public readonly ulong DestinationOffset, Count;
+            public readonly ulong Offset;
+            public readonly ulong Size;
 
-            public PendingFlushBuffer(BufferPools.MemoryHandle src, uint queue, Action callback, VkSemaphore signal,
-                IPinnableBindableBuffer dst,
-                ulong dstOffset, ulong dstCount) : base(src, queue, callback, signal)
+            public PendingFlushBuffer(BufferPools.MemoryHandle src, TransferArguments arguments,
+                IPinnableBindableBuffer dst, ulong dstOffset, ulong dstCount) : base(src, arguments)
             {
                 Destination = dst;
-                DestinationOffset = dstOffset;
-                Count = dstCount;
+                Offset = dstOffset;
+                Size = dstCount;
                 Destination.IncreasePins();
             }
 
@@ -78,6 +74,10 @@ namespace VulkanLibrary.Managed.Utilities
                 base.Finished();
                 Destination.DecreasePins();
             }
+
+            Handles.Buffer IBindableBuffer.BindingHandle => Destination.BindingHandle;
+            ulong IBindableBuffer.Offset => Destination.Offset + Offset;
+            ulong IBindableBuffer.Size => Size;
         }
 
         private class PendingFlushImage : PendingFlush
@@ -85,9 +85,8 @@ namespace VulkanLibrary.Managed.Utilities
             public readonly Image Destination;
             public readonly VkBufferImageCopy CopyData;
 
-            public PendingFlushImage(BufferPools.MemoryHandle src, uint queue, Action callback, VkSemaphore signal,
-                Image dst,
-                VkBufferImageCopy copyDesc) : base(src, queue, callback, signal)
+            public PendingFlushImage(BufferPools.MemoryHandle src, TransferArguments arguments, Image dst,
+                VkBufferImageCopy copyDesc) : base(src, arguments)
             {
                 Destination = dst;
                 CopyData = copyDesc;
@@ -106,9 +105,10 @@ namespace VulkanLibrary.Managed.Utilities
         private readonly CommandPoolCached _cmdBufferPool;
         private readonly AutoResetEvent _pendingFlushQueued = new AutoResetEvent(false);
         private readonly ConcurrentQueue<PendingFlush> _pendingFlush = new ConcurrentQueue<PendingFlush>();
-        private const VkBufferUsageFlag _usage = VkBufferUsageFlag.TransferSrc;
-        private const VkBufferCreateFlag _flags = 0;
+        private const VkBufferUsageFlag Usage = VkBufferUsageFlag.TransferSrc;
+        private const VkBufferCreateFlag Flags = 0;
 
+        public int PendingTransfers => _pendingFlush.Count;
 
         public DeferredTransfer(Device dev, Queue transferQueue)
         {
@@ -134,6 +134,17 @@ namespace VulkanLibrary.Managed.Utilities
             return Flush();
         }
 
+        private int _activeFlushers;
+
+        /// <summary>
+        /// Waits until all tasks have been submitted to the queue.
+        /// </summary>
+        public void WaitUntilFlushed()
+        {
+            while (_pendingFlush.Count > 0 || _activeFlushers > 0)
+                ;
+        }
+
         /// <summary>
         /// Puts all pending transfers in the transfer queue
         /// </summary>
@@ -141,54 +152,60 @@ namespace VulkanLibrary.Managed.Utilities
         public bool Flush()
         {
             var flushed = 0;
-            while (_pendingFlush.TryDequeue(out var temp))
+            Interlocked.Increment(ref _activeFlushers);
+
+            CommandBufferPooledExclusiveUse buffer = null;
+            try
             {
-                flushed++;
-                var buffer = _cmdBufferPool.Borrow();
-                try
+                CommandBufferRecorder recorder = default;
+
+                while (_pendingFlush.TryDequeue(out var temp))
                 {
+                    if (buffer == null)
+                    {
+                        buffer = _cmdBufferPool.Borrow();
+                        recorder = buffer.RecordCommands(VkCommandBufferUsageFlag.OneTimeSubmit);
+                    }
+
+                    flushed++;
                     buffer.SubmissionFinished += temp.Finished;
-                    var sigString = temp.Signal != VkSemaphore.Null ? ", then signaling " + temp.Signal : "";
                     switch (temp)
                     {
                         case PendingFlushBuffer pendingBuffer:
                         {
                             _log.Trace(
-                                $"Transferring {pendingBuffer.Count} bytes to {pendingBuffer.Destination}{sigString}\t({_pendingFlush.Count} remain)");
-                            var recorder = buffer.RecordCommands(VkCommandBufferUsageFlag.OneTimeSubmit);
-                            recorder.BufferMemoryBarrier(pendingBuffer.Destination.BindingHandle,
-                                VkAccessFlag.AllExceptExt,
-                                pendingBuffer.OwnerQueueFamily,
-                                VkAccessFlag.AllExceptExt, _transferQueue.FamilyIndex,
-                                VkPipelineStageFlag.AllCommands, VkPipelineStageFlag.AllCommands,
-                                VkDependencyFlag.None,
-                                pendingBuffer.Destination.Offset + pendingBuffer.DestinationOffset,
-                                pendingBuffer.Count);
-                            recorder.CopyBuffer(pendingBuffer.Handle.BackingBuffer,
-                                pendingBuffer.Destination.BindingHandle,
+                                $"Transferring {pendingBuffer.Size} bytes to {pendingBuffer.Destination}\t({_pendingFlush.Count} remain)");
+                            var target = (IBindableBuffer) pendingBuffer;
+
+                            recorder.BufferMemoryBarrier(target.BindingHandle,
+                                VkAccessFlag.AllExceptExt, pendingBuffer.Arguments.SrcQueueFamily,
+                                VkAccessFlag.AllExceptExt, _transferQueue.FamilyIndex, VkPipelineStageFlag.AllCommands,
+                                VkPipelineStageFlag.AllCommands, VkDependencyFlag.None,
+                                target.Offset, target.Size);
+
+                            recorder.CopyBuffer(pendingBuffer.Handle.BackingBuffer, target.BindingHandle,
                                 new VkBufferCopy
                                 {
                                     SrcOffset = pendingBuffer.Handle.Offset,
-                                    DstOffset = pendingBuffer.Destination.Offset +
-                                                pendingBuffer.DestinationOffset,
-                                    Size = pendingBuffer.Count
+                                    DstOffset = target.Offset,
+                                    Size = target.Size
                                 });
-                            recorder.BufferMemoryBarrier(pendingBuffer.Destination.BindingHandle,
-                                VkAccessFlag.AllExceptExt,
-                                _transferQueue.FamilyIndex,
-                                VkAccessFlag.AllExceptExt,
-                                pendingBuffer.OwnerQueueFamily,
-                                VkPipelineStageFlag.AllCommands, VkPipelineStageFlag.AllCommands,
-                                VkDependencyFlag.None,
-                                pendingBuffer.Destination.Offset + pendingBuffer.DestinationOffset,
-                                pendingBuffer.Count);
-                            recorder.Commit();
+                            if (temp.Arguments.DstQueueFamily != Vulkan.QueueFamilyIgnored)
+                                recorder.BufferMemoryBarrier(pendingBuffer.Destination.BindingHandle,
+                                    VkAccessFlag.AllExceptExt, _transferQueue.FamilyIndex, VkAccessFlag.AllExceptExt,
+                                    temp.Arguments.DstQueueFamily,
+                                    VkPipelineStageFlag.AllCommands, VkPipelineStageFlag.AllCommands,
+                                    VkDependencyFlag.None, target.Offset, target.Size);
+
+                            if (temp.Arguments.SetEvent != null)
+                                recorder.Handle.SetEvent(temp.Arguments.SetEvent.Handle,
+                                    VkPipelineStageFlag.AllCommands);
                             break;
                         }
                         case PendingFlushImage pendingImage:
                         {
                             _log.Trace(
-                                $"Transferring {pendingImage.CopyData.BufferRowLength * pendingImage.CopyData.ImageExtent.Height} pixels to {pendingImage.Destination.Handle}{sigString}\t({_pendingFlush.Count} remain)");
+                                $"Transferring {pendingImage.CopyData.BufferRowLength * pendingImage.CopyData.ImageExtent.Height} pixels to {pendingImage.Destination}\t({_pendingFlush.Count} remain)");
                             var range = new VkImageSubresourceRange
                             {
                                 AspectMask = pendingImage.CopyData.ImageSubresource.AspectMask,
@@ -197,12 +214,10 @@ namespace VulkanLibrary.Managed.Utilities
                                 BaseArrayLayer = pendingImage.CopyData.ImageSubresource.BaseArrayLayer,
                                 LayerCount = pendingImage.CopyData.ImageSubresource.LayerCount
                             };
-                            var recorder = buffer.RecordCommands(VkCommandBufferUsageFlag.OneTimeSubmit);
                             recorder.ImageMemoryBarrier(pendingImage.Destination.Handle,
                                 pendingImage.Destination.Format, VkImageLayout.Undefined,
-                                VkImageLayout.TransferDstOptimal,
-                                range, VkDependencyFlag.None,
-                                pendingImage.OwnerQueueFamily, _transferQueue.FamilyIndex);
+                                VkImageLayout.TransferDstOptimal, range, VkDependencyFlag.None,
+                                pendingImage.Arguments.SrcQueueFamily, _transferQueue.FamilyIndex);
                             recorder.CopyBufferToImage(pendingImage.Handle.BackingBuffer.Handle,
                                 pendingImage.Destination.Handle,
                                 new VkBufferImageCopy
@@ -215,52 +230,138 @@ namespace VulkanLibrary.Managed.Utilities
                                     ImageOffset = pendingImage.CopyData.ImageOffset,
                                     ImageExtent = pendingImage.CopyData.ImageExtent
                                 });
-                            recorder.ImageMemoryBarrier(pendingImage.Destination.Handle,
-                                pendingImage.Destination.Format, VkImageLayout.Undefined,
-                                VkImageLayout.TransferDstOptimal,
-                                range, VkDependencyFlag.None,
-                                _transferQueue.FamilyIndex, pendingImage.OwnerQueueFamily);
-                            recorder.Commit();
+                            if (temp.Arguments.DstQueueFamily != Vulkan.QueueFamilyIgnored)
+                                recorder.ImageMemoryBarrier(pendingImage.Destination.Handle,
+                                    pendingImage.Destination.Format, VkImageLayout.Undefined,
+                                    VkImageLayout.TransferDstOptimal, range, VkDependencyFlag.None,
+                                    _transferQueue.FamilyIndex, temp.Arguments.DstQueueFamily);
+
+                            if (temp.Arguments.SetEvent != null)
+                                recorder.Handle.SetEvent(temp.Arguments.SetEvent.Handle,
+                                    VkPipelineStageFlag.AllCommands);
                             break;
                         }
                         default:
                             throw new InvalidOperationException(
                                 $"Can't handle pending data {temp.GetType().Name}");
                     }
+                }
 
-                    _transferQueue.Submit(buffer, null, VkPipelineStageFlag.None, temp.Signal);
-                }
-                finally
+                if (buffer != null)
                 {
-                    _cmdBufferPool.Return(buffer);
+                    recorder.Commit();
+                    _transferQueue.Submit(buffer);
                 }
+            }
+            finally
+            {
+                if (buffer != null)
+                    _cmdBufferPool.Return(buffer);
+                Interlocked.Decrement(ref _activeFlushers);
             }
 
             return flushed > 0;
         }
 
         public unsafe void Transfer(IPinnableBindableBuffer dest, ulong destOffset, void* data, ulong count,
-            uint destQueueFamily, Action callback = null, VkSemaphore? signal = null)
+            TransferArguments? arguments = null)
         {
-            var handle = Device.BufferPools.Allocate(_transferType, _usage, _flags, count);
+            CheckArgs(arguments);
+            var handle = Device.BufferPools.Allocate(_transferType, Usage, Flags, count);
             Buffer.MemoryCopy(data, handle.MappedMemory.Handle.ToPointer(), handle.Size, count);
             if (!handle.BackingMemory.MemoryType.HostCoherent)
                 handle.MappedMemory.FlushRange(0, count);
-            _pendingFlush.Enqueue(new PendingFlushBuffer(handle, destQueueFamily, callback, signal ?? VkSemaphore.Null,
-                dest, destOffset, count));
+            _pendingFlush.Enqueue(new PendingFlushBuffer(handle, arguments ?? TransferArguments.Null, dest, destOffset,
+                count));
             _pendingFlushQueued.Set();
         }
 
-        public unsafe void Transfer(Image dest, void* data, ulong count, VkBufferImageCopy copyInfo,
-            uint destQueueFamily, Action callback = null, VkSemaphore? signal = null)
+        private void CheckArgs(TransferArguments? args)
         {
-            var handle = Device.BufferPools.Allocate(_transferType, _usage, _flags, count);
+            if (!args.HasValue)
+                return;
+            var a = args.Value;
+            if (a.SetEvent != null)
+                Debug.Assert(Event.SupportedBy(_transferQueue), "Transfer queue doesn't support events");
+            if (a.SrcQueueFamily != Vulkan.QueueFamilyIgnored)
+                Debug.Assert(a.SrcQueueFamily != _transferQueue.FamilyIndex,
+                    "Source queue family is identical to transfer queue.  Doesn't make sense");
+            if (a.DstQueueFamily != Vulkan.QueueFamilyIgnored)
+                Debug.Assert(a.DstQueueFamily != _transferQueue.FamilyIndex,
+                    "Destination queue family is identical to transfer queue.  Doesn't make sense");
+        }
+
+        public unsafe void Transfer(Image dest, void* data, ulong count, VkBufferImageCopy copyInfo,
+            TransferArguments? arguments = null)
+        {
+            CheckArgs(arguments);
+            var handle = Device.BufferPools.Allocate(_transferType, Usage, Flags, count);
             Buffer.MemoryCopy(data, handle.MappedMemory.Handle.ToPointer(), handle.Size, count);
             if (!handle.BackingMemory.MemoryType.HostCoherent)
                 handle.MappedMemory.FlushRange(0, count);
-            _pendingFlush.Enqueue(new PendingFlushImage(handle, destQueueFamily, callback, signal ?? VkSemaphore.Null,
-                dest, copyInfo));
+            _pendingFlush.Enqueue(new PendingFlushImage(handle, arguments ?? TransferArguments.Null, dest, copyInfo));
             _pendingFlushQueued.Set();
+        }
+
+        public readonly struct TransferArguments
+        {
+            internal readonly Action _callback;
+            internal readonly Event SetEvent;
+            internal readonly uint DstQueueFamily;
+            internal readonly uint SrcQueueFamily;
+
+            public TransferArguments(Action a, Event e, uint dstFamily, uint srcFamily)
+            {
+                _callback = a;
+                SetEvent = e;
+                DstQueueFamily = dstFamily;
+                SrcQueueFamily = srcFamily;
+            }
+
+            public TransferArguments WithCallback(Action a)
+            {
+                return new TransferArguments(_callback != null ? (_callback + a) : a, SetEvent, DstQueueFamily,
+                    SrcQueueFamily);
+            }
+
+            public TransferArguments WithEvent(Event e)
+            {
+                if (SetEvent != null)
+                    throw new InvalidOperationException("Can't set multiple events");
+                return new TransferArguments(_callback, e, DstQueueFamily, SrcQueueFamily);
+            }
+
+            public TransferArguments WithDestinationQueue(uint index)
+            {
+                return new TransferArguments(_callback, SetEvent, index, SrcQueueFamily);
+            }
+
+            public TransferArguments WithSourceQueue(uint index)
+            {
+                return new TransferArguments(_callback, SetEvent, DstQueueFamily, index);
+            }
+
+            public static TransferArguments Callback(Action a)
+            {
+                return new TransferArguments(a, null, Vulkan.QueueFamilyIgnored, Vulkan.QueueFamilyIgnored);
+            }
+
+            public static TransferArguments Event(Event e)
+            {
+                return new TransferArguments(null, e, Vulkan.QueueFamilyIgnored, Vulkan.QueueFamilyIgnored);
+            }
+
+            public static TransferArguments DestinationQueue(uint index)
+            {
+                return new TransferArguments(null, null, index, Vulkan.QueueFamilyIgnored);
+            }
+
+            public static TransferArguments SourceQueue(uint index)
+            {
+                return new TransferArguments(null, null, Vulkan.QueueFamilyIgnored, index);
+            }
+
+            public static readonly TransferArguments Null = DestinationQueue(Vulkan.QueueFamilyIgnored);
         }
 
         public void Dispose()
@@ -268,6 +369,23 @@ namespace VulkanLibrary.Managed.Utilities
             _cmdBufferPool.Dispose();
             while (_pendingFlush.TryDequeue(out var k))
                 k.Handle.Free();
+        }
+
+        private static readonly ILogger _logDefault = LogManager.GetCurrentClassLogger();
+        private ILogger _log = _logDefault;
+        private string _name;
+
+        public string Name
+        {
+            get => _name;
+            set
+            {
+                _name = value;
+                if (string.IsNullOrEmpty(_name))
+                    _log = _logDefault;
+                else
+                    _log = LogManager.GetLogger(GetType().FullName + "[Name=" + _name + "]");
+            }
         }
     }
 }
