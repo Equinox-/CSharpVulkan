@@ -100,7 +100,9 @@ namespace VulkanLibrary.Managed.Buffers.Pool
             var blockSize = BlockSizeForUsage(usage);
             var blockCount = System.Math.Max((ulong) System.Math.Ceiling(size / (double) blockSize) * 4UL, PoolBlockCount);
             var families = Device.Queues.Select(x => x.FamilyIndex).Distinct().ToArray();
-            var npool = new BufferPool(Device, blockSize, blockCount, usage, create, type, families.Length > 1 ? families : new uint[0]);
+            // TODO consider how concurrency works here.  Needed?
+            // families.Length > 1 ? families : new uint[0]);
+            var npool = new BufferPool(Device, blockSize, blockCount, usage, create, type, new uint[0]);
             pools.Add(npool);
             return new MemoryHandle(npool, npool.Allocate(size));
         }

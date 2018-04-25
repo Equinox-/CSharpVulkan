@@ -177,11 +177,12 @@ namespace VulkanLibrary.Managed.Utilities
                                 $"Transferring {pendingBuffer.Size} bytes to {pendingBuffer.Destination}\t({_pendingFlush.Count} remain)");
                             var target = (IBindableBuffer) pendingBuffer;
 
-                            recorder.BufferMemoryBarrier(target.BindingHandle,
-                                VkAccessFlag.AllExceptExt, pendingBuffer.Arguments.SrcQueueFamily,
-                                VkAccessFlag.AllExceptExt, _transferQueue.FamilyIndex, VkPipelineStageFlag.AllCommands,
-                                VkPipelineStageFlag.AllCommands, VkDependencyFlag.None,
-                                target.Offset, target.Size);
+                            if (temp.Arguments.SrcQueueFamily != _transferQueue.FamilyIndex)
+                                recorder.BufferMemoryBarrier(target.BindingHandle,
+                                    VkAccessFlag.AllExceptExt, pendingBuffer.Arguments.SrcQueueFamily,
+                                    VkAccessFlag.AllExceptExt, _transferQueue.FamilyIndex, VkPipelineStageFlag.AllCommands,
+                                    VkPipelineStageFlag.AllCommands, VkDependencyFlag.None,
+                                    target.Offset, target.Size);
 
                             recorder.CopyBuffer(pendingBuffer.Handle.BackingBuffer, target.BindingHandle,
                                 new VkBufferCopy
@@ -190,7 +191,7 @@ namespace VulkanLibrary.Managed.Utilities
                                     DstOffset = target.Offset,
                                     Size = target.Size
                                 });
-                            if (temp.Arguments.DstQueueFamily != Vulkan.QueueFamilyIgnored)
+                            if (temp.Arguments.DstQueueFamily != _transferQueue.FamilyIndex)
                                 recorder.BufferMemoryBarrier(pendingBuffer.Destination.BindingHandle,
                                     VkAccessFlag.AllExceptExt, _transferQueue.FamilyIndex, VkAccessFlag.AllExceptExt,
                                     temp.Arguments.DstQueueFamily,
@@ -214,10 +215,11 @@ namespace VulkanLibrary.Managed.Utilities
                                 BaseArrayLayer = pendingImage.CopyData.ImageSubresource.BaseArrayLayer,
                                 LayerCount = pendingImage.CopyData.ImageSubresource.LayerCount
                             };
-                            recorder.ImageMemoryBarrier(pendingImage.Destination.Handle,
-                                pendingImage.Destination.Format, VkImageLayout.Undefined,
-                                VkImageLayout.TransferDstOptimal, range, VkDependencyFlag.None,
-                                pendingImage.Arguments.SrcQueueFamily, _transferQueue.FamilyIndex);
+                            if (temp.Arguments.SrcQueueFamily != _transferQueue.FamilyIndex)
+                                recorder.ImageMemoryBarrier(pendingImage.Destination.Handle,
+                                    pendingImage.Destination.Format, VkImageLayout.Undefined,
+                                    VkImageLayout.TransferDstOptimal, range, VkDependencyFlag.None,
+                                    pendingImage.Arguments.SrcQueueFamily, _transferQueue.FamilyIndex);
                             recorder.CopyBufferToImage(pendingImage.Handle.BackingBuffer.Handle,
                                 pendingImage.Destination.Handle,
                                 new VkBufferImageCopy
@@ -230,7 +232,7 @@ namespace VulkanLibrary.Managed.Utilities
                                     ImageOffset = pendingImage.CopyData.ImageOffset,
                                     ImageExtent = pendingImage.CopyData.ImageExtent
                                 });
-                            if (temp.Arguments.DstQueueFamily != Vulkan.QueueFamilyIgnored)
+                            if (temp.Arguments.DstQueueFamily != _transferQueue.FamilyIndex)
                                 recorder.ImageMemoryBarrier(pendingImage.Destination.Handle,
                                     pendingImage.Destination.Format, VkImageLayout.Undefined,
                                     VkImageLayout.TransferDstOptimal, range, VkDependencyFlag.None,
@@ -283,12 +285,8 @@ namespace VulkanLibrary.Managed.Utilities
             var a = args.Value;
             if (a.SetEvent != null)
                 Debug.Assert(Event.SupportedBy(_transferQueue), "Transfer queue doesn't support events");
-            if (a.SrcQueueFamily != Vulkan.QueueFamilyIgnored)
-                Debug.Assert(a.SrcQueueFamily != _transferQueue.FamilyIndex,
-                    "Source queue family is identical to transfer queue.  Doesn't make sense");
-            if (a.DstQueueFamily != Vulkan.QueueFamilyIgnored)
-                Debug.Assert(a.DstQueueFamily != _transferQueue.FamilyIndex,
-                    "Destination queue family is identical to transfer queue.  Doesn't make sense");
+            Debug.Assert(a.SrcQueueFamily != Vulkan.QueueFamilyIgnored, "Source queue family must be specified");
+            Debug.Assert(a.DstQueueFamily != Vulkan.QueueFamilyIgnored, "Destination queue family must be specified");
         }
 
         public unsafe void Transfer(Image dest, void* data, ulong count, VkBufferImageCopy copyInfo,
@@ -320,8 +318,7 @@ namespace VulkanLibrary.Managed.Utilities
 
             public TransferArguments WithCallback(Action a)
             {
-                return new TransferArguments(_callback != null ? (_callback + a) : a, SetEvent, DstQueueFamily,
-                    SrcQueueFamily);
+                return new TransferArguments(_callback != null ? (_callback + a) : a, SetEvent, DstQueueFamily, SrcQueueFamily);
             }
 
             public TransferArguments WithEvent(Event e)
